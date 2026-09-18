@@ -1,0 +1,28 @@
+{
+  "dataset": "data/multilingual_sample.csv (hand-written FR/AR sample)",
+  "model": "English-only Random Forest + TF-IDF (trained on cleaned_emails.csv)",
+  "languages": {
+    "ar": {
+      "n": 11,
+      "accuracy": 0.5454545454545454,
+      "destroyed_by_cleaning": 11,
+      "legit_n": 5,
+      "legit_false_positives": 5,
+      "legit_fpr": 1.0,
+      "phish_n": 6,
+      "phish_caught": 6,
+      "phish_recall": 1.0
+    },
+    "fr": {
+      "n": 11,
+      "accuracy": 0.5454545454545454,
+      "destroyed_by_cleaning": 0,
+      "legit_n": 5,
+      "legit_false_positives": 5,
+      "legit_fpr": 1.0,
+      "phish_n": 6,
+      "phish_caught": 6,
+      "phish_recall": 1.0
+    }
+  }
+}

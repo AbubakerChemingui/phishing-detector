@@ -1,7 +1,19 @@
+import os
+import sys
 import pandas as pd
 import joblib
 import re
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+
+# The Naive Bayes artifacts live in the old project copy, not in this repo
+# (large binaries are intentionally untracked - see DATA_SOURCES.md).
+for _needed in ("naive_bayes_model.pkl", "naive_bayes_vectorizer.pkl"):
+    if not os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), _needed)):
+        print(f"error: '{_needed}' is not in this folder.")
+        print("It lives in the old project copy at C:\\Users\\Abubaker\\phishing-detector\\")
+        print("Copy it next to this script to run this validation, or use")
+        print("evaluate_saved_model.py ( Random Forest, same holdout ) instead.")
+        sys.exit(1)
 
 # load nb model + vectorizer
 trained_model = joblib.load("naive_bayes_model.pkl")

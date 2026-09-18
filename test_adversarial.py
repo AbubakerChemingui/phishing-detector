@@ -7,6 +7,7 @@ Also evaluates a set of legitimate control emails to compute false‑positive ra
 
 import os
 import sys
+import io
 import random
 import string
 import base64
@@ -29,30 +30,40 @@ clean_email_text = core.clean_email_text
 analyze_email = core.analyze_email
 
 # ----------------------------------------------------------------------
-def _predict_raw(raw_text: str) -> float:
-    """
-    Return phishing probability from the base Random Forest model,
-    using only the original cleaning (no URL/header checks).
-    """
-    cleaned = clean_email_text(raw_text)
-    X = VECTORIZER.transform([cleaned])
-    probas = MODEL.predict_proba(X)[0]
-    # Assume class 1 = phishing
-    return float(probas[1])
+# ----------------------------------------------------------------------
+# Single documented decision rule, applied on both sides:
+#   phishing_prob = P(phishing) from the saved Random Forest (threshold 0.5)
+#   raw side      : prob on plain-cleaned text
+#   hardened side : prob on hardened-then-cleaned text, OR the additive
+#                   override (url_risk > 0.70, or auth_fail with prob < 0.60)
+# Text hardening (NFKC + homoglyph + leet + zero-width) is ON here, so the
+# leet / zero-width / homograph classes are evaluated fairly.
+THRESH = 0.5
+URL_RISK_TRIGGER = 0.70
+AUTH_LOW_CONF = 0.60
 
 
-def detect_original(raw_text: str, threshold: float = 0.5) -> bool:
-    """True if model predicts phishing (prob >= threshold)."""
-    return _predict_raw(raw_text) >= threshold
+def _predict_proba(cleaned_text: str) -> float:
+    X = VECTORIZER.transform([cleaned_text])
+    return float(MODEL.predict_proba(X)[0][1])
 
 
-def detect_hardened(raw_text: str, med_thresh: float = 0.65, high_thresh: float = 0.85) -> bool:
-    """
-    Use the full hardened logic from core.analyze_email.
-    Returns True if prediction is Phishing.
-    """
-    result = analyze_email(raw_text, med_thresh=med_thresh, high_thresh=high_thresh, harden_first=False)
-    return result["prediction"] == "Phishing"
+def detect_original(raw_text: str) -> bool:
+    """True if model predicts phishing (prob >= threshold) on plain-cleaned text."""
+    return _predict_proba(clean_email_text(raw_text)) >= THRESH
+
+
+def detect_hardened(raw_text: str) -> bool:
+    """True if hardened path predicts phishing: normalized text + URL/auth override."""
+    hardened = core.apply_hardening(raw_text)
+    prob = _predict_proba(clean_email_text(hardened))
+    if prob >= THRESH:
+        return True
+    if core.get_url_risk(hardened) > URL_RISK_TRIGGER:
+        return True
+    if core.check_auth_headers(hardened) and prob < AUTH_LOW_CONF:
+        return True
+    return False
 
 
 # ----------------------------------------------------------------------
@@ -262,7 +273,11 @@ LEGIT_CONTROLS = [
 # ----------------------------------------------------------------------
 # Run evaluation
 # ----------------------------------------------------------------------
-def main():
+def _run():
+    print("decision rule (both sides): phishing_prob >= 0.5")
+    print("raw side: prob on plain-cleaned text.")
+    print("hardened side: prob on hardened-then-cleaned text, OR url_risk>0.70,")
+    print("               OR (auth_fail AND prob<0.60). text hardening is ON.")
     # Adversarial evaluation
     adv_samples = build_adversarial_samples()
     total_adv = len(adv_samples)
@@ -325,6 +340,32 @@ def main():
     print(f"False-positive rate: {fp_rate:.1f}%")
     if legit_fp_list:
         print("False positive controls:", ", ".join(legit_fp_list))
+
+class _Tee:
+    """Write to console and capture everything for the results file."""
+    def __init__(self, *streams):
+        self.streams = streams
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+    def flush(self):
+        for s in self.streams:
+            s.flush()
+
+
+def main():
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = _Tee(old_stdout, buf)
+    try:
+        _run()
+    finally:
+        sys.stdout = old_stdout
+    out_path = os.path.join(sys_path, "adversarial_results.txt")
+    with open(out_path, "w", encoding="utf-8") as fh:
+        fh.write(buf.getvalue())
+    print(f"saved: {out_path}")
+
 
 if __name__ == "__main__":
     main()

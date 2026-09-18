@@ -28,9 +28,6 @@ OPEN_REDIRECTORS = {
     'linkedin.com/redir', 'reddit.com/r/', 'yahoo.com/r/',
     'bing.com/r', 'duckduckgo.com/l/?uddg='
 }
-# Characters often used to obfuscate in URLs
-OBFUSCATION_CHARS = set('%@')  # percent encoding, @ userinfo trick
-
 # ----------------------------------------------------------------------
 # Helper functions
 # ----------------------------------------------------------------------
@@ -69,8 +66,8 @@ def _extract_urls(raw_text: str) -> List[str]:
 def _normalize_url(url: str) -> str:
     """Lowercase, trim trailing punctuation, and decode percent‑encoding."""
     url = url.strip().lower()
-    # Strip trailing punctuation that is not part of URL
-    url = url.rstrip('.,:;!?\'"\)] }')
+    # Strip trailing punctuation that is not part of URL (raw string: backslash kept literally)
+    url = url.rstrip(r'''.,:;!?'"\)] }''')
     try:
         return urllib.parse.unquote(url)
     except Exception:
@@ -99,8 +96,10 @@ def _contains_obfuscation(url: str) -> bool:
     # Percent encoded characters
     if '%' in url:
         return True
-    # @ userinfo trick (e.g., http:// legit@evil.com/path)
-    if '@' in url and url.count('@') > 1:
+    # @ userinfo trick (e.g., http://legit@evil.com/path): a single '@'
+    # inside the URL authority means the browser ignores everything before it
+    authority = url.split('://', 1)[-1].split('/', 1)[0]
+    if '@' in authority:
         return True
     # Hex/decimal IP encoded (detected separately)
     return False
@@ -162,12 +161,18 @@ def analyze_url_features(raw_text: str) -> Dict[str, float]:
         if '%' in raw_u:
             n_pct += 1
 
-        # Obfuscation (hex/decimal IP encoded in host part)
-        # Detect patterns like %31%32%2e%33%34... or decimal IP without dots
-        if re.search(r'%(?:[0-9A-Fa-f]{2}){2,}', raw_u) or \
-           re.search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', host) is None and \
-           re.search(r'\d{7,15}', host):
-            # Rough heuristic: long digit string without dots could be decimal IP
+        # Obfuscation (hex/decimal IP encoded in host part). Three shapes:
+        #  - percent-encoded bytes: %43%30... (two or more %XX groups)
+        #  - long digit string without dots: decimal IP like 3232235521
+        #  - 8 hex chars, optionally 0x-prefixed: hex IP like c0a80101
+        pct_groups = len(re.findall(r'%[0-9A-Fa-f]{2}', raw_u))
+        host_nodot = host.replace('.', '')
+        dotted_quad = re.search(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', host)
+        if (pct_groups >= 2
+                or (dotted_quad is None and re.search(r'\d{7,15}', host))
+                or (dotted_quad is None
+                    and re.fullmatch(r'(0[xX])?[0-9a-fA-F]{8}', host_nodot or ''))):
+            # Rough heuristic: encoded numeric host is almost never legitimate
             n_hexip += 1
 
         # Homograph detection – compare ASCII skeleton
@@ -181,7 +186,10 @@ def analyze_url_features(raw_text: str) -> Dict[str, float]:
             n_obf += 1
 
     total = len(urls)
-    # Simple weighted risk (weights can be tuned)
+    # Simple weighted risk (weights can be tuned).
+    # NOTE: hex_ip gets the same weight as a plain IP host (0.30): an
+    # obfuscated IP is at least as suspicious as a visible one. Previously
+    # n_hexip was computed but never added here, so hex-encoded IPs scored 0.
     risk = (
         0.30 * (n_ip / total) +
         0.20 * (n_susp / total) +
@@ -189,7 +197,8 @@ def analyze_url_features(raw_text: str) -> Dict[str, float]:
         0.15 * (n_open / total) +
         0.10 * (n_pct / total) +
         0.05 * (n_homo / total) +
-        0.05 * (n_obf / total)
+        0.05 * (n_obf / total) +
+        0.30 * (n_hexip / total)
     )
     risk = min(risk, 1.0)
 

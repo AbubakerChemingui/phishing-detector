@@ -1,0 +1,41 @@
+decision rule (both sides): phishing_prob >= 0.5
+raw side: prob on plain-cleaned text.
+hardened side: prob on hardened-then-cleaned text, OR url_risk>0.70,
+               OR (auth_fail AND prob<0.60). text hardening is ON.
+Evaluating 40 adversarial samples (seed=12345)...
+
+=== Adversarial Detection Rates ===
+Original model only : 100.0% (40/40)
+Hardened (URL+Header): 100.0% (40/40)
+Improvement         : 0.0 percentage points
+
+Original misses: None
+Hardened misses: None
+
+=== Per-class breakdown (approx) ===
+Base         | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Homograph    | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+HexIP        | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+PercentIP    | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Shortener    | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+OpenRedirect | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+BenignWord   | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+LeetSpeak    | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+ZeroWidth    | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+CharSwap     | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+HTMLEntity   | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Base64Body   | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo1       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo2       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo3       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo4       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo5       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo6       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo7       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+Combo8       | Orig: 100.0% | Hard: 100.0% | Delta:  +0.0
+
+=== Legitimate Control Evaluation ===
+Legitimate controls : 15
+False positives    : 1
+False-positive rate: 6.7%
+False positive controls: Control#8

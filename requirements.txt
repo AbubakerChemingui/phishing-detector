@@ -1,0 +1,13 @@
+# Minimal runtime for the phishing-detector project (Python 3.13, Windows).
+# Pinned from the working venv at C:\Users\Abubaker\phishing-detector\phishing_env
+# Install with: python -m pip install -r requirements.txt
+scikit-learn==1.9.0
+joblib==1.5.3
+pandas==3.0.3
+numpy==2.5.0
+scipy==1.18.0
+idna==3.18
+pytest==9.1.1
+streamlit==1.58.0
+xgboost==3.3.0
+matplotlib==3.11.0
