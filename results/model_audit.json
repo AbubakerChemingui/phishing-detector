@@ -1,0 +1,318 @@
+{
+  "models": {
+    "random_forest": {
+      "present": true,
+      "type": "RandomForestClassifier",
+      "classes": [
+        0,
+        1
+      ],
+      "model_n_features": 5000,
+      "vocab_size": 5000,
+      "consistent": true,
+      "file_mb": 133.57,
+      "n_estimators": 200,
+      "holdout": {
+        "dataset": "cleaned_emails 80/20 holdout (seed 42)",
+        "n": 16438,
+        "accuracy": 0.9858863608711522,
+        "precision": 0.9885165221467073,
+        "recall": 0.9843640606767795,
+        "f1": 0.9864359214218896,
+        "roc_auc": 0.9987741284282848,
+        "tn": 7770,
+        "fp": 98,
+        "fn": 134,
+        "tp": 8436,
+        "fpr": 0.012455516014234875
+      },
+      "cross_dataset": {
+        "dataset": "Phishing_Email.csv unseen",
+        "n": 18630,
+        "accuracy": 0.9788513150831991,
+        "precision": 0.9566710700132101,
+        "recall": 0.9909688013136289,
+        "f1": 0.9735179459604786,
+        "roc_auc": 0.995753426323068,
+        "tn": 10994,
+        "fp": 328,
+        "fn": 66,
+        "tp": 7242,
+        "fpr": 0.02897014661720544
+      }
+    },
+    "xgboost": {
+      "present": true,
+      "type": "XGBClassifier",
+      "classes": [
+        0,
+        1
+      ],
+      "model_n_features": 5000,
+      "vocab_size": 5000,
+      "consistent": true,
+      "file_mb": 0.38,
+      "n_estimators": 200,
+      "max_depth": 6,
+      "holdout": {
+        "dataset": "cleaned_emails 80/20 holdout (seed 42)",
+        "n": 16438,
+        "accuracy": 0.9615525003041733,
+        "precision": 0.9839063643013899,
+        "recall": 0.941656942823804,
+        "f1": 0.9623181492964464,
+        "roc_auc": 0.9964034041260731,
+        "tn": 7736,
+        "fp": 132,
+        "fn": 500,
+        "tp": 8070,
+        "fpr": 0.01677681748856126
+      },
+      "cross_dataset": {
+        "dataset": "Phishing_Email.csv unseen",
+        "n": 18630,
+        "accuracy": 0.9635534084809447,
+        "precision": 0.9226061456075482,
+        "recall": 0.9901477832512315,
+        "f1": 0.9551844762721933,
+        "roc_auc": 0.9963003789068697,
+        "tn": 10715,
+        "fp": 607,
+        "fn": 72,
+        "tp": 7236,
+        "fpr": 0.05361243596537714
+      }
+    },
+    "naive_bayes": {
+      "present": true,
+      "type": "MultinomialNB",
+      "classes": [
+        0,
+        1
+      ],
+      "model_n_features": 5000,
+      "vocab_size": 5000,
+      "consistent": true,
+      "file_mb": 0.16,
+      "holdout": {
+        "dataset": "cleaned_emails 80/20 holdout (seed 42)",
+        "n": 16438,
+        "accuracy": 0.9624041854240175,
+        "precision": 0.9766243107168545,
+        "recall": 0.9506417736289382,
+        "f1": 0.9634578997161779,
+        "roc_auc": 0.9946977298707553,
+        "tn": 7673,
+        "fp": 195,
+        "fn": 423,
+        "tp": 8147,
+        "fpr": 0.024783934926283682
+      },
+      "cross_dataset": {
+        "dataset": "Phishing_Email.csv unseen",
+        "n": 18630,
+        "accuracy": 0.9349436392914654,
+        "precision": 0.9204137931034483,
+        "recall": 0.9131089217296113,
+        "f1": 0.9167468058799285,
+        "roc_auc": 0.9848730818135821,
+        "tn": 10745,
+        "fp": 577,
+        "fn": 635,
+        "tp": 6673,
+        "fpr": 0.05096272743331567
+      }
+    }
+  },
+  "comparisons": {
+    "random_forest": {
+      "holdout": {
+        "claimed": {
+          "accuracy": 0.9859,
+          "precision": 0.9885,
+          "recall": 0.9844,
+          "f1": 0.9864
+        },
+        "measured": {
+          "accuracy": 0.9858863608711522,
+          "precision": 0.9885165221467073,
+          "recall": 0.9843640606767795,
+          "f1": 0.9864359214218896
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      },
+      "cross": {
+        "claimed": {
+          "accuracy": 0.9789,
+          "precision": 0.9567,
+          "recall": 0.991,
+          "f1": 0.9735
+        },
+        "measured": {
+          "accuracy": 0.9788513150831991,
+          "precision": 0.9566710700132101,
+          "recall": 0.9909688013136289,
+          "f1": 0.9735179459604786
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      }
+    },
+    "xgboost": {
+      "holdout": {
+        "claimed": {
+          "accuracy": 0.9616,
+          "precision": 0.9839,
+          "recall": 0.9417,
+          "f1": 0.9623
+        },
+        "measured": {
+          "accuracy": 0.9615525003041733,
+          "precision": 0.9839063643013899,
+          "recall": 0.941656942823804,
+          "f1": 0.9623181492964464
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      },
+      "cross": {
+        "claimed": {
+          "accuracy": 0.9636,
+          "precision": 0.9226,
+          "recall": 0.9901,
+          "f1": 0.9552
+        },
+        "measured": {
+          "accuracy": 0.9635534084809447,
+          "precision": 0.9226061456075482,
+          "recall": 0.9901477832512315,
+          "f1": 0.9551844762721933
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      }
+    },
+    "naive_bayes": {
+      "holdout": {
+        "claimed": {
+          "accuracy": 0.9624,
+          "precision": 0.9766,
+          "recall": 0.9506,
+          "f1": 0.9635
+        },
+        "measured": {
+          "accuracy": 0.9624041854240175,
+          "precision": 0.9766243107168545,
+          "recall": 0.9506417736289382,
+          "f1": 0.9634578997161779
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      },
+      "cross": {
+        "claimed": {
+          "accuracy": 0.9349,
+          "precision": 0.9204,
+          "recall": 0.9131,
+          "f1": 0.9167
+        },
+        "measured": {
+          "accuracy": 0.9349436392914654,
+          "precision": 0.9204137931034483,
+          "recall": 0.9131089217296113,
+          "f1": 0.9167468058799285
+        },
+        "abs_diffs": {
+          "accuracy": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1": 0.0
+        },
+        "match": true
+      }
+    }
+  },
+  "leakage": {
+    "duplicate_rows_in_corpus": 1756,
+    "test_rows_seen_in_train": 437,
+    "test_rows_seen_in_train_pct": 0.026584742669424503,
+    "rf_accuracy_excluding_overlaps": 0.985500906193363,
+    "rf_accuracy_all": 0.9858863608711522
+  },
+  "thresholds": {
+    "random_forest_holdout": {
+      "0.5": {
+        "recall": 0.985414235705951,
+        "fpr": 0.012582613116420945,
+        "flag_rate": 0.5197712617106705
+      },
+      "0.65": {
+        "recall": 0.953558926487748,
+        "fpr": 0.005338078291814947,
+        "flag_rate": 0.49969582674291274
+      },
+      "0.85": {
+        "recall": 0.8315052508751458,
+        "fpr": 0.001525165226232842,
+        "flag_rate": 0.4342377418177394
+      }
+    }
+  },
+  "edge_inputs": {
+    "mean_proba_correct": 0.5225690347510309,
+    "mean_proba_wrong": 0.5211022874133031,
+    "uncertain_band_0.4_0.6_pct": 0.024273025915561505,
+    "empty": {
+      "cleaned": "",
+      "proba": 0.8625972241108358,
+      "pred": 1
+    },
+    "spaces": {
+      "cleaned": "",
+      "proba": 0.8625972241108357,
+      "pred": 1
+    },
+    "single_word": {
+      "cleaned": "hello",
+      "proba": 0.9842278854800596,
+      "pred": 1
+    },
+    "arabic": {
+      "cleaned": "",
+      "proba": 0.8625972241108358,
+      "pred": 1
+    },
+    "url_only": {
+      "cleaned": "url",
+      "proba": 0.2584532817916439,
+      "pred": 0
+    }
+  },
+  "verdicts": []
+}
