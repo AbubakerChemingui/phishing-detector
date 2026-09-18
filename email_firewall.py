@@ -17,7 +17,12 @@ import joblib
 # Import core logic for hardened detection
 import core
 # configuration from env vars with defaults
-core.load_artifacts()\nEMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+core.load_artifacts()
+EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+
+# Set to True (e.g. via --harden) to normalize homoglyph/leet/zero-width tricks before detection
+HARDEN_FIRST = False
 PROVIDER = os.environ.get("EMAIL_PROVIDER") or os.environ.get("PROVIDER") or "gmail"
 PHISHING_CONFIDENCE_THRESHOLD = 0.65
 _env_threshold = os.environ.get("PHISHING_CONFIDENCE_THRESHOLD")
@@ -66,7 +71,7 @@ def scan_folder(folder_path):
             print(f"{fname}: error reading file - {e}")
             continue
         # Use hardened analysis
-        result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85, harden_first=False)
+        result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85, harden_first=HARDEN_FIRST)
         verdict = result["prediction"]
         conf = result["confidence_str"]
         print(f"{fname}: {verdict} ({conf})")
@@ -80,7 +85,7 @@ def classify_email(subject, body):
     if model is None or vectorizer is None:
         raise RuntimeError("model files could not be loaded")
     full_text = f"{subject} {body}"
-    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85, harden_first=False)
+    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85, harden_first=HARDEN_FIRST)
     return result["prediction"], result["confidence_str"]
 
 
@@ -308,7 +313,17 @@ def main():
                         help="max consecutive connection failures before giving up in loop mode")
     parser.add_argument("--scan-folder", type=str, default=None,
                         help="dry-run mode: scan all .eml/.txt files in folder and print verdicts")
+    parser.add_argument("--harden", action="store_true",
+                        help="apply text hardening (homoglyph/leet/zero-width normalization) before detection")
     args = parser.parse_args()
+
+    if args.harden:
+        global HARDEN_FIRST
+        HARDEN_FIRST = True
+
+    if args.scan_folder:
+        scan_folder(args.scan_folder)
+        return
 
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         print("error: missing credentials. set EMAIL_ADDRESS and EMAIL_PASSWORD environment variables.")
