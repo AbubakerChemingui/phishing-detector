@@ -1,0 +1,6 @@
+﻿*.pkl
+data/*.csv
+data/validation/
+__pycache__/
+.pytest_cache/
+out.txt

@@ -1,0 +1,351 @@
+"""
+email firewall - phishing auto-detection
+connects to an imap inbox, scans unread emails, and auto-moves phishing emails to spam.
+"""
+
+import os
+import sys
+import time
+import argparse
+import imaplib
+import email
+from email.header import decode_header
+import html
+import re
+import joblib
+
+# Import core logic for hardened detection
+import core
+# configuration from env vars with defaults
+core.load_artifacts()\nEMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+PROVIDER = os.environ.get("EMAIL_PROVIDER") or os.environ.get("PROVIDER") or "gmail"
+PHISHING_CONFIDENCE_THRESHOLD = 0.65
+_env_threshold = os.environ.get("PHISHING_CONFIDENCE_THRESHOLD")
+if _env_threshold is not None:
+    try:
+        PHISHING_CONFIDENCE_THRESHOLD = float(_env_threshold)
+    except ValueError:
+        print(f"warning: PHISHING_CONFIDENCE_THRESHOLD='{_env_threshold}' is not a number, using default 0.65")
+
+PROVIDER_SETTINGS = {
+    "gmail": {"imap_server": "imap.gmail.com", "spam_folder": '[Gmail]/Spam'},
+    "outlook": {"imap_server": "outlook.office365.com", "spam_folder": 'Junk'},
+}
+
+# model loading
+model_path = os.path.join(os.path.dirname(__file__), "random_forest_model.pkl")
+vectorizer_path = os.path.join(os.path.dirname(__file__), "random_forest_vectorizer.pkl")
+
+try:
+    model = joblib.load(model_path)
+    vectorizer = joblib.load(vectorizer_path)
+except Exception as e:
+    model = None
+    vectorizer = None
+
+
+def scan_folder(folder_path):
+    """
+    Dry-run mode: scan all .eml and .txt files in folder_path,
+    print filename and prediction (Phishing/Legitimate) using hardened core.
+    """
+    if not os.path.isdir(folder_path):
+        print(f"error: {folder_path} is not a directory")
+        return
+    files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.eml', '.txt'))]
+    if not files:
+        print("No .eml or .txt files found in folder.")
+        return
+    print(f"Scanning {len(files)} files in {folder_path}")
+    for fname in files:
+        path = os.path.join(folder_path, fname)
+        try:
+            with open(path, 'r', encoding='utf-8', errors='ignore') as fh:
+                raw = fh.read()
+        except Exception as e:
+            print(f"{fname}: error reading file - {e}")
+            continue
+        # Use hardened analysis
+        result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85, harden_first=False)
+        verdict = result["prediction"]
+        conf = result["confidence_str"]
+        print(f"{fname}: {verdict} ({conf})")
+
+
+def classify_email(subject, body):
+    """
+    Classify an email using the hardened core logic (URL + header checks + model).
+    Returns (prediction_label, confidence_str) where prediction_label is "Phishing" or "Legitimate".
+    """
+    if model is None or vectorizer is None:
+        raise RuntimeError("model files could not be loaded")
+    full_text = f"{subject} {body}"
+    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85, harden_first=False)
+    return result["prediction"], result["confidence_str"]
+
+
+def strip_html(html_text):
+    # strip html tags and decode html entities
+    text = re.sub(r'<[^>]+>', ' ', html_text)
+    text = html.unescape(text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def decode_mime_words(s):
+    if not s:
+        return ""
+    decoded = decode_header(s)
+    parts = []
+    for text, enc in decoded:
+        if isinstance(text, bytes):
+            parts.append(text.decode(enc or "utf-8", errors="ignore"))
+        else:
+            parts.append(str(text))
+    return "".join(parts)
+
+
+def decode_payload(part):
+    # decode body using the charset the email declares, utf-8 as fallback
+    charset = part.get_content_charset() or "utf-8"
+    payload = part.get_payload(decode=True)
+    if not payload:
+        return ""
+    try:
+        return payload.decode(charset, errors="replace")
+    except (LookupError, ValueError):
+        # unknown charset label, fall back to utf-8
+        return payload.decode("utf-8", errors="replace")
+
+
+def get_email_body(msg):
+    # try plain text first, fallback to html if no plain text
+    plain_body = ""
+    html_body = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            content_disposition = str(part.get("Content-Disposition", ""))
+            if "attachment" in content_disposition:
+                continue
+            if content_type == "text/plain" and not plain_body:
+                try:
+                    plain_body = decode_payload(part)
+                except Exception:
+                    pass
+            elif content_type == "text/html" and not html_body:
+                try:
+                    html_body = decode_payload(part)
+                except Exception:
+                    pass
+    else:
+        content_type = msg.get_content_type()
+        try:
+            text = decode_payload(msg)
+            if content_type == "text/html":
+                html_body = text
+            else:
+                plain_body = text
+        except Exception:
+            pass
+    if plain_body and plain_body.strip():
+        return plain_body.strip()
+    elif html_body and html_body.strip():
+        return strip_html(html_body)
+    return ""
+
+
+def run_scan():
+    # fail fast instead of scanning a whole inbox with no model
+    if model is None or vectorizer is None:
+        print("error: could not load random_forest_model.pkl / random_forest_vectorizer.pkl")
+        return False
+
+    # one full scan cycle. returns True if it completed, False on connection-level failure
+    provider_key = PROVIDER.lower().strip()
+    if provider_key not in PROVIDER_SETTINGS:
+        print(f"warning: unknown provider '{PROVIDER}'. defaulting to gmail settings.")
+        provider_key = "gmail"
+
+    settings = PROVIDER_SETTINGS[provider_key]
+    spam_folder = settings["spam_folder"]
+
+    print(f"connecting to {settings['imap_server']} for account '{EMAIL_ADDRESS}'...")
+    try:
+        mail = imaplib.IMAP4_SSL(settings["imap_server"])
+        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+    except Exception as e:
+        print("login/connection failed. please verify credentials and app password settings.")
+        print(f"details: {e}")
+        return False
+
+    status, _ = mail.select("INBOX")
+    if status != "OK":
+        print("error: could not select INBOX.")
+        mail.logout()
+        return False
+
+    status, message_numbers = mail.search(None, "UNSEEN")
+    if status != "OK":
+        print("error: could not search unread emails in INBOX.")
+        mail.logout()
+        return False
+
+    ids = message_numbers[0].split()
+    total_emails = len(ids)
+    print(f"found {total_emails} unread email(s) in INBOX.\n")
+
+    if total_emails == 0:
+        mail.logout()
+        print("scan complete. no unread emails to process.")
+        return True
+
+    flagged_count = 0
+    kept_count = 0
+    error_count = 0
+    spam_move_failed = False
+
+    for idx, num in enumerate(ids, start=1):
+        try:
+            status, msg_data = mail.fetch(num, "(RFC822)")
+            if status != "OK" or not msg_data or not msg_data[0]:
+                email_id_str = num.decode() if isinstance(num, bytes) else str(num)
+                print(f"[{idx}/{total_emails}] error: failed to fetch email ID {email_id_str}")
+                error_count += 1
+                continue
+
+            raw_email = msg_data[0][1]
+            msg = email.message_from_bytes(raw_email)
+
+            subject = decode_mime_words(msg.get("Subject", "(no subject)"))
+            sender = decode_mime_words(msg.get("From", "(unknown sender)"))
+            body = get_email_body(msg)
+
+            prediction, confidence = classify_email(subject, body)
+
+            print(f"[{idx}/{total_emails}] From: {sender}")
+            print(f"  Subject: {subject}")
+            print(f"  Result:  {prediction} (confidence: {confidence})")
+
+            # Determine if phishing based on prediction label (hardened already includes URL/auth checks)
+            is_phishing = (prediction == "Phishing")
+            if is_phishing:
+                target_folder = format_folder_name(spam_folder)
+                copy_status, copy_data = mail.copy(num, target_folder)
+                if copy_status == "OK":
+                    mail.store(num, "+FLAGS", "\\Deleted")
+                    flagged_count += 1
+                    print(f"  Action:  MOVED to spam folder ({spam_folder})\n")
+                else:
+                    print(f"  Action:  FAILED to move to spam folder ({spam_folder}). IMAP response: {copy_data}")
+                    if not spam_move_failed:
+                        spam_move_failed = True
+                        print("\navailable folders on your account:")
+                        folders = list_available_folders(mail)
+                        for f in folders:
+                            print(f"  - {f}")
+                        print("\nplease check the spam folder name above and update your folder configuration.\n")
+                    kept_count += 1
+            else:
+                kept_count += 1
+                print("  Action:  KEPT in INBOX\n")
+
+        except Exception as e:
+            error_count += 1
+            email_id_str = num.decode() if isinstance(num, bytes) else str(num)
+            print(f"[{idx}/{total_emails}] error processing email ID {email_id_str}: {e}\n")
+
+    try:
+        mail.expunge()
+    except Exception:
+        pass
+
+    try:
+        mail.logout()
+    except Exception:
+        pass
+
+    print("=" * 40)
+    print("SCAN SUMMARY")
+    print("=" * 40)
+    print(f"Total checked:      {total_emails}")
+    print(f"Moved to Spam:      {flagged_count}")
+    print(f"Kept in INBOX:      {kept_count}")
+    print(f"Errors encountered: {error_count}")
+    print("=" * 40)
+    return True
+
+
+def list_available_folders(mail):
+    # helper to list available imap folders if folder move fails
+    try:
+        status, folder_list = mail.list()
+        if status == "OK" and folder_list:
+            folders = []
+            for item in folder_list:
+                if isinstance(item, bytes):
+                    item = item.decode(errors="ignore")
+                folders.append(item)
+            return folders
+    except Exception as e:
+        return [f"error listing folders: {e}"]
+    return []
+
+
+def format_folder_name(folder):
+    if folder.startswith('"') and folder.endswith('"'):
+        return folder
+    if any(c in folder for c in [' ', '/', '[', ']']):
+        return f'"{folder}"'
+    return folder
+
+
+def main():
+    parser = argparse.ArgumentParser(description="phishing email firewall")
+    parser.add_argument("--loop", type=int, default=0, metavar="SECONDS",
+                        help="rescan inbox every N seconds instead of running once")
+    parser.add_argument("--max-retries", type=int, default=5,
+                        help="max consecutive connection failures before giving up in loop mode")
+    parser.add_argument("--scan-folder", type=str, default=None,
+                        help="dry-run mode: scan all .eml/.txt files in folder and print verdicts")
+    args = parser.parse_args()
+
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        print("error: missing credentials. set EMAIL_ADDRESS and EMAIL_PASSWORD environment variables.")
+        print("example (windows powershell):")
+        print("  $env:EMAIL_ADDRESS=\"your_email@gmail.com\"")
+        print("  $env:EMAIL_PASSWORD=\"your_16_char_app_password\"")
+        print("  $env:EMAIL_PROVIDER=\"gmail\"")
+        sys.exit(1)
+
+    if args.scan_folder:
+        scan_folder(args.scan_folder)
+        return
+
+    if args.loop <= 0:
+        ok = run_scan()
+        sys.exit(0 if ok else 1)
+
+    # scheduled mode: reconnect each cycle, back off on failures
+    print(f"scheduled mode: scanning every {args.loop}s. press ctrl+c to stop.")
+    fail_streak = 0
+    cycle = 1
+    try:
+        while True:
+            print(f"\n--- scan cycle {cycle} ({time.strftime('%Y-%m-%d %H:%M:%S')}) ---")
+            ok = run_scan()
+            if ok:
+                fail_streak = 0
+            else:
+                fail_streak += 1
+                if fail_streak >= args.max_retries:
+                    print(f"giving up after {fail_streak} consecutive failures.")
+                    sys.exit(1)
+                cycle += 1
+                time.sleep(args.loop)
+    except KeyboardInterrupt:
+        print("\nstopped by user.")
+
+
+if __name__ == "__main__":
+    main()
