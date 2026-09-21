@@ -1,16 +1,16 @@
 {
   "dataset": "data/validation/Phishing_Email.csv (unseen corpus)",
   "n_test": 18630,
-  "accuracy": 0.9788513150831991,
-  "precision": 0.9566710700132101,
-  "recall": 0.9909688013136289,
-  "f1": 0.9735179459604786,
-  "roc_auc": 0.995753426323068,
+  "accuracy": 0.978851,
+  "precision": 0.956671,
+  "recall": 0.990969,
+  "f1": 0.973518,
+  "roc_auc": 0.995753,
   "confusion": {
     "tn": 10994,
     "fp": 328,
     "fn": 66,
     "tp": 7242
   },
-  "fpr": 0.02897014661720544
+  "fpr": 0.02897
 }

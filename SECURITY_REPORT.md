@@ -23,6 +23,9 @@ TF-IDF + Random Forest email classifier (`random_forest_model.pkl`,
   normalization) available via `harden_first=True`.
 - `email_firewall.py` – IMAP scanner (Gmail/Outlook) routing every message
   through `core.analyze_email()`, plus `--scan-folder` dry-run and `--harden`.
+  Live moves are gated: only `Phishing` verdicts at confidence ≥
+  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65, env-configurable) go to
+  Spam; marginal calls stay in the inbox for human review.
 
 The `.pkl` model files are never modified by any evaluation below.
 

@@ -4,7 +4,7 @@
   "languages": {
     "ar": {
       "n": 11,
-      "accuracy": 0.5454545454545454,
+      "accuracy": 0.545455,
       "destroyed_by_cleaning": 11,
       "legit_n": 5,
       "legit_false_positives": 5,
@@ -15,7 +15,7 @@
     },
     "fr": {
       "n": 11,
-      "accuracy": 0.5454545454545454,
+      "accuracy": 0.545455,
       "destroyed_by_cleaning": 0,
       "legit_n": 5,
       "legit_false_positives": 5,

@@ -33,6 +33,18 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(BASE, "results")
 os.makedirs(RESULTS, exist_ok=True)
 
+
+def _round_floats(o):
+    # Multithreaded BLAS can flip the last float bit between runs;
+    # 6 decimals keeps files byte-stable without losing any real precision.
+    if isinstance(o, float):
+        return round(o, 6)
+    if isinstance(o, dict):
+        return {k: _round_floats(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_round_floats(v) for v in o]
+    return o
+
 model = joblib.load(os.path.join(BASE, "random_forest_model.pkl"))
 vectorizer = joblib.load(os.path.join(BASE, "random_forest_vectorizer.pkl"))
 
@@ -65,6 +77,7 @@ metrics = {
     "confusion": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
     "fpr": float(fp / (fp + tn)),
 }
+metrics = _round_floats(metrics)
 print(json.dumps(metrics, indent=2))
 with open(os.path.join(RESULTS, "baseline_metrics.json"), "w", encoding="utf-8") as fh:
     json.dump(metrics, fh, indent=2)
@@ -103,6 +116,7 @@ metrics2 = {
     "confusion": {"tn": int(tn2), "fp": int(fp2), "fn": int(fn2), "tp": int(tp2)},
     "fpr": float(fp2 / (fp2 + tn2)),
 }
+metrics2 = _round_floats(metrics2)
 print(json.dumps(metrics2, indent=2))
 with open(os.path.join(RESULTS, "cross_dataset_metrics.json"), "w", encoding="utf-8") as fh:
     json.dump(metrics2, fh, indent=2)

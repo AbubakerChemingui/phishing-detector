@@ -128,14 +128,15 @@ def classify_email(subject, body, headers=""):
     """
     Classify an email using the hardened core logic (URL + header checks + model).
     headers: raw header block (enables SPF/DKIM/DMARC pass/fail signals).
-    Returns (prediction_label, confidence_str) where prediction_label is "Phishing" or "Legitimate".
+    Returns (prediction_label, confidence_str, confidence_float) where
+    prediction_label is "Phishing" or "Legitimate".
     """
     if model is None or vectorizer is None:
         raise RuntimeError("model files could not be loaded")
     full_text = f"{subject} {body}"
     result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85,
                                 harden_first=HARDEN_FIRST, headers=headers)
-    return result["prediction"], result["confidence_str"]
+    return result["prediction"], result["confidence_str"], float(result["confidence"])
 
 
 def strip_html(html_text):
@@ -292,15 +293,24 @@ def run_scan():
             body = get_email_body(msg)
             headers_text = "\n".join(f"{k}: {v}" for k, v in msg.items())
 
-            prediction, confidence = classify_email(subject, body, headers_text)
+            prediction, confidence, conf_value = classify_email(subject, body, headers_text)
 
             print(f"[{idx}/{total_emails}] From: {sender}")
             print(f"  Subject: {subject}")
             print(f"  Result:  {prediction} (confidence: {confidence})")
 
-            # Determine if phishing based on prediction label (hardened already includes URL/auth checks)
-            is_phishing = (prediction == "Phishing")
-            if is_phishing:
+            # Move only high-confidence phishing to Spam: the label comes from the
+            # hardened core, and PHISHING_CONFIDENCE_THRESHOLD (default 0.65, set
+            # via env) keeps marginal calls in the inbox for human review.
+            # Measured trade-off on 16,438 emails: 0.65 halves the FPR
+            # (1.26% -> 0.53%) for ~3pp of recall (see MODEL_AUDIT.md).
+            is_phishing = (prediction == "Phishing"
+                           and conf_value >= PHISHING_CONFIDENCE_THRESHOLD)
+            if prediction == "Phishing" and not is_phishing:
+                kept_count += 1
+                print(f"  Action:  KEPT in INBOX (below move threshold "
+                      f"{PHISHING_CONFIDENCE_THRESHOLD:.2f})\n")
+            elif is_phishing:
                 target_folder = format_folder_name(spam_folder)
                 copy_status, copy_data = mail.copy(num, target_folder)
                 if copy_status == "OK":

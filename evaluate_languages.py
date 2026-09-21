@@ -27,6 +27,18 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(BASE, "results")
 os.makedirs(RESULTS, exist_ok=True)
 
+
+def _round_floats(o):
+    # Multithreaded BLAS can flip the last float bit between runs;
+    # 6 decimals keeps files byte-stable without losing any real precision.
+    if isinstance(o, float):
+        return round(o, 6)
+    if isinstance(o, dict):
+        return {k: _round_floats(v) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_round_floats(v) for v in o]
+    return o
+
 import core  # noqa: E402  (local module, needs BASE-adjacent import path)
 
 core.load_artifacts()
@@ -90,5 +102,5 @@ print("  - arabic text is reduced to nothing by the [^a-z] filter, so arabic")
 print("    predictions are made on empty text -> the model is english-only.")
 
 with open(os.path.join(RESULTS, "multilingual_metrics.json"), "w", encoding="utf-8") as fh:
-    json.dump(out, fh, indent=2, ensure_ascii=False)
+    json.dump(_round_floats(out), fh, indent=2, ensure_ascii=False)
 print("saved: results/multilingual_metrics.json")
