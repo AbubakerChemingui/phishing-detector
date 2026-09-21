@@ -492,13 +492,13 @@ class PhishingDetectorGUI:
         row2.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(row2, text=self.tr('confidence_label'), font=("Helvetica", 10)).pack(side=tk.LEFT)
         self.widgets['lbl_conf_label'] = row2.winfo_children()[0]
-        self.lbl_conf = ttk.Label(row2, text="-", font=("Helvetica", 10, "bold"))
+        self.lbl_conf = tk.Label(row2, text="-", font=("Helvetica", 10, "bold"))
         self.lbl_conf.pack(side=tk.LEFT, padx=(8, 20))
         self.widgets['lbl_conf'] = self.lbl_conf
 
         ttk.Label(row2, text=self.tr('alert_label'), font=("Helvetica", 10)).pack(side=tk.LEFT)
         self.widgets['lbl_alert_label'] = row2.winfo_children()[2]
-        self.lbl_alert = ttk.Label(row2, text="-", font=("Helvetica", 10, "bold"))
+        self.lbl_alert = tk.Label(row2, text="-", font=("Helvetica", 10, "bold"))
         self.lbl_alert.pack(side=tk.LEFT, padx=(8, 0))
         self.widgets['lbl_alert'] = self.lbl_alert
 
@@ -507,7 +507,7 @@ class PhishingDetectorGUI:
         row3.pack(fill=tk.X, pady=(4, 0))
         ttk.Label(row3, text=self.tr('top_words_label'), font=("Helvetica", 10)).pack(anchor="w")
         self.widgets['lbl_words_label'] = row3.winfo_children()[0]
-        self.lbl_words = ttk.Label(
+        self.lbl_words = tk.Label(
             res_frame,
             text=self.tr('none'),
             font=("Consolas", 9),
@@ -539,6 +539,11 @@ class PhishingDetectorGUI:
         slider_grid = ttk.Frame(opts_frame)
         slider_grid.pack(fill=tk.X)
 
+        # Keep real references: widget["variable"] only returns the Tcl
+        # variable NAME string, not the object (that was the crash bug).
+        self.med_thresh_var = tk.DoubleVar(value=0.65)
+        self.high_thresh_var = tk.DoubleVar(value=0.85)
+
         # Medium threshold slider
         ttk.Label(slider_grid, text=self.tr('medium_threshold'), font=("Helvetica", 10)).grid(row=0, column=0, sticky="w", padx=(0, 8), pady=3)
         self.widgets['lbl_medium'] = slider_grid.winfo_children()[0]
@@ -546,7 +551,7 @@ class PhishingDetectorGUI:
             slider_grid,
             from_=0.0,
             to=1.0,
-            variable=tk.DoubleVar(value=0.65),
+            variable=self.med_thresh_var,
             command=self._on_threshold_change
         )
         self.scale_med.grid(row=0, column=1, sticky="ew", padx=(0, 8), pady=3)
@@ -561,7 +566,7 @@ class PhishingDetectorGUI:
             slider_grid,
             from_=0.0,
             to=1.0,
-            variable=tk.DoubleVar(value=0.85),
+            variable=self.high_thresh_var,
             command=self._on_threshold_change
         )
         self.scale_high.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=3)
@@ -571,9 +576,8 @@ class PhishingDetectorGUI:
 
         slider_grid.columnconfigure(1, weight=1)
 
-        # Store slider variables for easy access
-        self.med_thresh_var = self.scale_med["variable"]
-        self.high_thresh_var = self.scale_high["variable"]
+        # (med_thresh_var / high_thresh_var already hold the live DoubleVar
+        # objects created above - do NOT reassign from widget["variable"].)
 
         # Language selector
         lang_frame = ttk.Frame(opts_frame)
@@ -645,10 +649,12 @@ class PhishingDetectorGUI:
         style.configure("TLabelframe", background=bg, foreground=fg)
         style.configure("TLabelframe.Label", background=bg, foreground=fg)
         # Update specific widget colors
+        # (value labels are tk.Label: they need explicit foreground, otherwise
+        # text renders in default black on the black background = invisible)
         self.lbl_pred.configure(background=bg)
-        self.lbl_conf.configure(background=bg)
+        self.lbl_conf.configure(background=bg, foreground=fg)
         self.lbl_alert.configure(background=bg)
-        self.lbl_words.configure(background=bg)
+        self.lbl_words.configure(background=bg, foreground=fg)
         self.text_input.configure(background=bg, foreground=fg, insertbackground=fg)
         # Update button bar colors (they inherit from style)
         # Ensure status bar uses same colors
