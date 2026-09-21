@@ -4,3 +4,4 @@ data/validation/
 __pycache__/
 .pytest_cache/
 out.txt
+.outlook_token_cache.bin

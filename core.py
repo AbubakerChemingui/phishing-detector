@@ -130,6 +130,18 @@ def check_auth_headers(raw_text: str) -> bool:
     return False
 
 
+def check_auth_pass(headers_text: str) -> bool:
+    """
+    Return True only if the headers show SPF+DKIM+DMARC *pass* together.
+    This is positive evidence the message really came from its claimed
+    sender (the opposite signal of check_auth_headers). Used as a veto
+    against the model, never as the sole verdict.
+    """
+    text_lower = headers_text.lower()
+    return ('dkim=pass' in text_lower and 'spf=pass' in text_lower
+            and 'dmarc=pass' in text_lower)
+
+
 def get_url_risk(raw_text: str) -> float:
     """Wrapper around url_analysis.get_url_risk for clarity."""
     return url_analysis.get_url_risk(raw_text)
@@ -172,7 +184,8 @@ def get_risk_color(pred_label: str, conf: float, med_thresh: float, high_thresh:
             return "#ffb300"  # amber
 
 
-def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_first: bool = False) -> dict:
+def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_first: bool = False,
+                  headers: str = "") -> dict:
     if MODEL is None or VECTORIZER is None:
         raise RuntimeError("Model and vectorizer are not loaded.")
 
@@ -214,8 +227,15 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
         raw_pred = 0
 
     # --- APWG‑aligned additive signals ---
-    url_risk = get_url_risk(raw_text)          # 0‑1
-    auth_fail = check_auth_headers(raw_text)   # bool
+    # URL reputation looks at content plus headers (e.g. List-Unsubscribe
+    # links live in headers, not the body).
+    url_scope = raw_text if not headers else raw_text + "\n" + headers
+    url_risk = get_url_risk(url_scope)              # 0‑1
+    # Auth signals come from headers when provided; otherwise fall back to
+    # the full text (preserves old behavior for raw-.eml callers).
+    auth_scope = headers if headers else raw_text
+    auth_fail = check_auth_headers(auth_scope)      # bool
+    auth_pass = check_auth_pass(auth_scope)         # bool
 
     # Override rule: if URL looks highly malicious OR we see an auth fail
     # and the model is not confident, force a phishing decision.
@@ -224,12 +244,18 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
         raw_pred = 1
         # Boost confidence to at least high‑threshold level so UI shows strong alert
         conf = max(conf, 0.85)
-        # Re‑compute alert tier and colour with the new confidence
-        alert_tier = get_alert(pred_label, conf, med_thresh, high_thresh)
-        color = get_risk_color(pred_label, conf, med_thresh, high_thresh)
-    else:
-        alert_tier = get_alert(pred_label, conf, med_thresh, high_thresh)
-        color = get_risk_color(pred_label, conf, med_thresh, high_thresh)
+    elif (auth_pass and url_risk < 0.50 and pred_label == "Phishing"
+            and conf < 0.80):
+        # Authenticated-sender veto: fully authenticated (SPF+DKIM+DMARC pass)
+        # with clean URLs and only moderate model suspicion is legitimate
+        # mail. Hard URL evidence (above) always wins over this veto, as does
+        # high model confidence. Confidence stays honestly low:
+        # authentication tipped an uncertain call.
+        pred_label = "Legitimate"
+        raw_pred = 0
+        conf = 1.0 - conf
+    alert_tier = get_alert(pred_label, conf, med_thresh, high_thresh)
+    color = get_risk_color(pred_label, conf, med_thresh, high_thresh)
 
     # Top contributing words = TF-IDF * feature_importance
     top_words = []

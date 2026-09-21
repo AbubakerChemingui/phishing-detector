@@ -14,8 +14,15 @@ import html
 import re
 import joblib
 
+# Console may be cp1252 (cannot print e.g. emoji filenames): never crash on output.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Import core logic for hardened detection
 import core
+import url_analysis
 # configuration from env vars with defaults
 core.load_artifacts()
 EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")
@@ -49,7 +56,34 @@ except Exception as e:
     vectorizer = None
 
 
-def scan_folder(folder_path):
+def diagnose_email(raw, headers=""):
+    """Print the full decision breakdown for one email: model probability,
+    URL-risk flags, auth-header checks, final verdict, top words. Use this to
+    find out WHY a legitimate email was flagged (or a phish missed)."""
+    text = core.apply_hardening(raw) if HARDEN_FIRST else raw
+    cleaned = core.clean_email_text(text)
+    X = core.VECTORIZER.transform([cleaned])
+    proba = float(core.MODEL.predict_proba(X)[0][1])
+    scope = raw if not headers else raw + "\n" + headers
+    auth_scope = headers if headers else raw
+    feats = url_analysis.analyze_url_features(scope)
+    auth = core.check_auth_headers(auth_scope)
+    authp = core.check_auth_pass(auth_scope)
+    result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85,
+                                harden_first=HARDEN_FIRST, headers=headers)
+    print(f"  model P(phishing) = {proba:.3f} (cleaned chars={len(cleaned)})")
+    print(f"  url_risk = {feats['url_risk']:.2f} "
+          f"(urls={feats['url_count']:.0f} ip={feats['has_ip']:.0f} "
+          f"tld={feats['suspicious_tld']:.0f} short={feats['shortener']:.0f} "
+          f"redirect={feats['open_redirect']:.0f} obf={feats['obfuscated']:.0f} "
+          f"homo={feats['homograph']:.0f} pct={feats['percent_encoded']:.0f} "
+          f"hexip={feats['hex_ip']:.0f})")
+    print(f"  auth_fail = {auth}   auth_pass = {authp}")
+    print(f"  verdict = {result['prediction']} ({result['confidence_str']})")
+    print(f"  top_words = {', '.join(w for w, _s in result['top_words'][:8])}")
+
+
+def scan_folder(folder_path, verbose=False):
     """
     Dry-run mode: scan all .eml and .txt files in folder_path,
     print filename and prediction (Phishing/Legitimate) using hardened core.
@@ -70,22 +104,37 @@ def scan_folder(folder_path):
         except Exception as e:
             print(f"{fname}: error reading file - {e}")
             continue
+        # Parse like the live path: content (subject+body) for the model,
+        # headers for URL/auth signals. Plain .txt notes fall back to raw text.
+        msg = email.message_from_string(raw)
+        subject = decode_mime_words(msg.get("Subject", ""))
+        body = get_email_body(msg)
+        if subject.strip() or body.strip():
+            text = f"{subject} {body}"
+            headers_text = "\n".join(f"{k}: {v}" for k, v in msg.items())
+        else:
+            text, headers_text = raw, ""
         # Use hardened analysis
-        result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85, harden_first=HARDEN_FIRST)
+        result = core.analyze_email(text, med_thresh=0.65, high_thresh=0.85,
+                                    harden_first=HARDEN_FIRST, headers=headers_text)
         verdict = result["prediction"]
         conf = result["confidence_str"]
         print(f"{fname}: {verdict} ({conf})")
+        if verbose:
+            diagnose_email(text, headers_text)
 
 
-def classify_email(subject, body):
+def classify_email(subject, body, headers=""):
     """
     Classify an email using the hardened core logic (URL + header checks + model).
+    headers: raw header block (enables SPF/DKIM/DMARC pass/fail signals).
     Returns (prediction_label, confidence_str) where prediction_label is "Phishing" or "Legitimate".
     """
     if model is None or vectorizer is None:
         raise RuntimeError("model files could not be loaded")
     full_text = f"{subject} {body}"
-    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85, harden_first=HARDEN_FIRST)
+    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85,
+                                harden_first=HARDEN_FIRST, headers=headers)
     return result["prediction"], result["confidence_str"]
 
 
@@ -178,7 +227,23 @@ def run_scan():
     print(f"connecting to {settings['imap_server']} for account '{EMAIL_ADDRESS}'...")
     try:
         mail = imaplib.IMAP4_SSL(settings["imap_server"])
-        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        if provider_key == "outlook":
+            # Microsoft disabled password login for Outlook IMAP:
+            # sign in with OAuth2 and authenticate via XOAUTH2 instead.
+            try:
+                from outlook_oauth import build_xoauth2_response, get_access_token
+            except ImportError:
+                print("error: outlook sign-in needs the 'msal' package (python -m pip install msal)")
+                return False
+            try:
+                token = get_access_token()
+            except RuntimeError as e:
+                print(f"outlook sign-in failed: {e}")
+                return False
+            mail.authenticate("XOAUTH2",
+                              lambda _resp: build_xoauth2_response(EMAIL_ADDRESS, token))
+        else:
+            mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
     except Exception as e:
         print("login/connection failed. please verify credentials and app password settings.")
         print(f"details: {e}")
@@ -225,8 +290,9 @@ def run_scan():
             subject = decode_mime_words(msg.get("Subject", "(no subject)"))
             sender = decode_mime_words(msg.get("From", "(unknown sender)"))
             body = get_email_body(msg)
+            headers_text = "\n".join(f"{k}: {v}" for k, v in msg.items())
 
-            prediction, confidence = classify_email(subject, body)
+            prediction, confidence = classify_email(subject, body, headers_text)
 
             print(f"[{idx}/{total_emails}] From: {sender}")
             print(f"  Subject: {subject}")
@@ -315,6 +381,8 @@ def main():
                         help="dry-run mode: scan all .eml/.txt files in folder and print verdicts")
     parser.add_argument("--harden", action="store_true",
                         help="apply text hardening (homoglyph/leet/zero-width normalization) before detection")
+    parser.add_argument("--verbose", action="store_true",
+                        help="with --scan-folder: print the full decision breakdown per file")
     args = parser.parse_args()
 
     if args.harden:
@@ -322,20 +390,19 @@ def main():
         HARDEN_FIRST = True
 
     if args.scan_folder:
-        scan_folder(args.scan_folder)
+        scan_folder(args.scan_folder, verbose=args.verbose)
         return
 
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+    # Outlook signs in with OAuth2 (see outlook_oauth.py), so it needs no email password.
+    provider_key = (PROVIDER or "gmail").lower().strip()
+    needs_password = provider_key != "outlook"
+    if not EMAIL_ADDRESS or (needs_password and not EMAIL_PASSWORD):
         print("error: missing credentials. set EMAIL_ADDRESS and EMAIL_PASSWORD environment variables.")
         print("example (windows powershell):")
         print("  $env:EMAIL_ADDRESS=\"your_email@gmail.com\"")
         print("  $env:EMAIL_PASSWORD=\"your_16_char_app_password\"")
         print("  $env:EMAIL_PROVIDER=\"gmail\"")
         sys.exit(1)
-
-    if args.scan_folder:
-        scan_folder(args.scan_folder)
-        return
 
     if args.loop <= 0:
         ok = run_scan()
