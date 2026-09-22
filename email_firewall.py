@@ -30,6 +30,22 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 
 # Set to True (e.g. via --harden) to normalize homoglyph/leet/zero-width tricks before detection
 HARDEN_FIRST = False
+
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firewall.log")
+
+
+def log_line(text=""):
+    """Print to the terminal AND append to firewall.log (audit trail).
+
+    The log survives scrolling/closed terminals and records every verdict
+    and action with a timestamp. Never raises: logging must not break scans.
+    """
+    print(text)
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {text}\n")
+    except Exception:
+        pass
 PROVIDER = os.environ.get("EMAIL_PROVIDER") or os.environ.get("PROVIDER") or "gmail"
 PHISHING_CONFIDENCE_THRESHOLD = 0.65
 _env_threshold = os.environ.get("PHISHING_CONFIDENCE_THRESHOLD")
@@ -72,14 +88,14 @@ def diagnose_email(raw, headers=""):
     result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85,
                                 harden_first=HARDEN_FIRST, headers=headers)
     print(f"  model P(phishing) = {proba:.3f} (cleaned chars={len(cleaned)})")
-    print(f"  url_risk = {feats['url_risk']:.2f} "
-          f"(urls={feats['url_count']:.0f} ip={feats['has_ip']:.0f} "
-          f"tld={feats['suspicious_tld']:.0f} short={feats['shortener']:.0f} "
-          f"redirect={feats['open_redirect']:.0f} obf={feats['obfuscated']:.0f} "
-          f"homo={feats['homograph']:.0f} pct={feats['percent_encoded']:.0f} "
-          f"hexip={feats['hex_ip']:.0f})")
-    print(f"  auth_fail = {auth}   auth_pass = {authp}")
-    print(f"  verdict = {result['prediction']} ({result['confidence_str']})")
+    log_line(f"  url_risk = {feats['url_risk']:.2f} "
+             f"(urls={feats['url_count']:.0f} ip={feats['has_ip']:.0f} "
+             f"tld={feats['suspicious_tld']:.0f} short={feats['shortener']:.0f} "
+             f"redirect={feats['open_redirect']:.0f} obf={feats['obfuscated']:.0f} "
+             f"homo={feats['homograph']:.0f} pct={feats['percent_encoded']:.0f} "
+             f"hexip={feats['hex_ip']:.0f})")
+    log_line(f"  auth_fail = {auth}   auth_pass = {authp}")
+    log_line(f"  verdict = {result['prediction']} ({result['confidence_str']})")
     print(f"  top_words = {', '.join(w for w, _s in result['top_words'][:8])}")
 
 
@@ -89,13 +105,13 @@ def scan_folder(folder_path, verbose=False):
     print filename and prediction (Phishing/Legitimate) using hardened core.
     """
     if not os.path.isdir(folder_path):
-        print(f"error: {folder_path} is not a directory")
+        log_line(f"error: {folder_path} is not a directory")
         return
     files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.eml', '.txt'))]
     if not files:
-        print("No .eml or .txt files found in folder.")
+        log_line("No .eml or .txt files found in folder.")
         return
-    print(f"Scanning {len(files)} files in {folder_path}")
+    log_line(f"Scanning {len(files)} files in {folder_path}")
     for fname in files:
         path = os.path.join(folder_path, fname)
         try:
@@ -119,7 +135,7 @@ def scan_folder(folder_path, verbose=False):
                                     harden_first=HARDEN_FIRST, headers=headers_text)
         verdict = result["prediction"]
         conf = result["confidence_str"]
-        print(f"{fname}: {verdict} ({conf})")
+        log_line(f"{fname}: {verdict} ({conf})")
         if verbose:
             diagnose_email(text, headers_text)
 
@@ -264,11 +280,11 @@ def run_scan():
 
     ids = message_numbers[0].split()
     total_emails = len(ids)
-    print(f"found {total_emails} unread email(s) in INBOX.\n")
+    log_line(f"found {total_emails} unread email(s) in INBOX.")
 
     if total_emails == 0:
         mail.logout()
-        print("scan complete. no unread emails to process.")
+        log_line("scan complete. no unread emails to process.")
         return True
 
     flagged_count = 0
@@ -281,7 +297,7 @@ def run_scan():
             status, msg_data = mail.fetch(num, "(RFC822)")
             if status != "OK" or not msg_data or not msg_data[0]:
                 email_id_str = num.decode() if isinstance(num, bytes) else str(num)
-                print(f"[{idx}/{total_emails}] error: failed to fetch email ID {email_id_str}")
+                log_line(f"[{idx}/{total_emails}] error: failed to fetch email ID {email_id_str}")
                 error_count += 1
                 continue
 
@@ -295,9 +311,9 @@ def run_scan():
 
             prediction, confidence, conf_value = classify_email(subject, body, headers_text)
 
-            print(f"[{idx}/{total_emails}] From: {sender}")
-            print(f"  Subject: {subject}")
-            print(f"  Result:  {prediction} (confidence: {confidence})")
+            log_line(f"[{idx}/{total_emails}] From: {sender}")
+            log_line(f"  Subject: {subject}")
+            log_line(f"  Result:  {prediction} (confidence: {confidence})")
 
             # Move only high-confidence phishing to Spam: the label comes from the
             # hardened core, and PHISHING_CONFIDENCE_THRESHOLD (default 0.65, set
@@ -308,33 +324,36 @@ def run_scan():
                            and conf_value >= PHISHING_CONFIDENCE_THRESHOLD)
             if prediction == "Phishing" and not is_phishing:
                 kept_count += 1
-                print(f"  Action:  KEPT in INBOX (below move threshold "
-                      f"{PHISHING_CONFIDENCE_THRESHOLD:.2f})\n")
+                log_line(f"  Action:  KEPT in INBOX (below move threshold "
+                         f"{PHISHING_CONFIDENCE_THRESHOLD:.2f})")
             elif is_phishing:
                 target_folder = format_folder_name(spam_folder)
                 copy_status, copy_data = mail.copy(num, target_folder)
                 if copy_status == "OK":
                     mail.store(num, "+FLAGS", "\\Deleted")
                     flagged_count += 1
-                    print(f"  Action:  MOVED to spam folder ({spam_folder})\n")
+                    log_line(f"  Action:  MOVED to spam folder ({spam_folder})")
                 else:
-                    print(f"  Action:  FAILED to move to spam folder ({spam_folder}). IMAP response: {copy_data}")
+                    log_line(f"  Action:  FAILED to move to spam folder ({spam_folder}). IMAP response: {copy_data}")
                     if not spam_move_failed:
                         spam_move_failed = True
-                        print("\navailable folders on your account:")
+                        log_line("")
+                        log_line("available folders on your account:")
                         folders = list_available_folders(mail)
                         for f in folders:
-                            print(f"  - {f}")
-                        print("\nplease check the spam folder name above and update your folder configuration.\n")
+                            log_line(f"  - {f}")
+                        log_line("")
+                        log_line("please check the spam folder name above and update your folder configuration.")
+                        log_line("")
                     kept_count += 1
             else:
                 kept_count += 1
-                print("  Action:  KEPT in INBOX\n")
+                log_line("  Action:  KEPT in INBOX")
 
         except Exception as e:
             error_count += 1
             email_id_str = num.decode() if isinstance(num, bytes) else str(num)
-            print(f"[{idx}/{total_emails}] error processing email ID {email_id_str}: {e}\n")
+            log_line(f"[{idx}/{total_emails}] error processing email ID {email_id_str}: {e}")
 
     try:
         mail.expunge()
@@ -346,14 +365,14 @@ def run_scan():
     except Exception:
         pass
 
-    print("=" * 40)
-    print("SCAN SUMMARY")
-    print("=" * 40)
-    print(f"Total checked:      {total_emails}")
-    print(f"Moved to Spam:      {flagged_count}")
-    print(f"Kept in INBOX:      {kept_count}")
-    print(f"Errors encountered: {error_count}")
-    print("=" * 40)
+    log_line("=" * 40)
+    log_line("SCAN SUMMARY")
+    log_line("=" * 40)
+    log_line(f"Total checked:      {total_emails}")
+    log_line(f"Moved to Spam:      {flagged_count}")
+    log_line(f"Kept in INBOX:      {kept_count}")
+    log_line(f"Errors encountered: {error_count}")
+    log_line("=" * 40)
     return True
 
 
@@ -419,24 +438,24 @@ def main():
         sys.exit(0 if ok else 1)
 
     # scheduled mode: reconnect each cycle, back off on failures
-    print(f"scheduled mode: scanning every {args.loop}s. press ctrl+c to stop.")
+    log_line(f"scheduled mode: scanning every {args.loop}s. press ctrl+c to stop.")
     fail_streak = 0
     cycle = 1
     try:
         while True:
-            print(f"\n--- scan cycle {cycle} ({time.strftime('%Y-%m-%d %H:%M:%S')}) ---")
+            log_line(f"--- scan cycle {cycle} ({time.strftime('%Y-%m-%d %H:%M:%S')}) ---")
             ok = run_scan()
             if ok:
                 fail_streak = 0
             else:
                 fail_streak += 1
                 if fail_streak >= args.max_retries:
-                    print(f"giving up after {fail_streak} consecutive failures.")
+                    log_line(f"giving up after {fail_streak} consecutive failures.")
                     sys.exit(1)
                 cycle += 1
                 time.sleep(args.loop)
     except KeyboardInterrupt:
-        print("\nstopped by user.")
+        log_line("stopped by user.")
 
 
 if __name__ == "__main__":
