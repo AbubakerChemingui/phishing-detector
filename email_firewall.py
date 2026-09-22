@@ -452,8 +452,8 @@ def main():
                 if fail_streak >= args.max_retries:
                     log_line(f"giving up after {fail_streak} consecutive failures.")
                     sys.exit(1)
-                cycle += 1
-                time.sleep(args.loop)
+            cycle += 1
+            time.sleep(args.loop)
     except KeyboardInterrupt:
         log_line("stopped by user.")
 
