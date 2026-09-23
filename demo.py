@@ -1,5 +1,6 @@
 import joblib
 import re
+import sys
 
 model = joblib.load("random_forest_model.pkl")
 vectorizer = joblib.load("random_forest_vectorizer.pkl")
@@ -33,13 +34,24 @@ print("When finished, type END on its own line\n")
 
 lines = []
 while True:
-    line = input()
+    try:
+        line = input()
+    except EOFError:
+        break
     if line.strip().upper() == "END":
         break
     lines.append(line)
 
 email_text = "\n".join(lines)
 cleaned = clean_email_text(email_text)
+
+if not cleaned:
+    # Nothing to classify: an empty string becomes a zero TF-IDF vector,
+    # which the model reads as phishing (fail-closed bias). Refuse instead,
+    # mirroring core.analyze_email's "please enter e-mail text" behavior.
+    print("\nResult: NO CONTENT (confidence: -)")
+    print("Alert:  Please paste an email to analyse - empty input cannot be classified.")
+    sys.exit(0)
 
 X = vectorizer.transform([cleaned])
 prediction = model.predict(X)[0]
