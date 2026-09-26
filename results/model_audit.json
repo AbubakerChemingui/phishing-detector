@@ -285,9 +285,11 @@
     }
   },
   "edge_inputs": {
+    "mean_conf_pred_label_correct": 0.930573,
+    "mean_conf_pred_label_wrong": 0.616875,
+    "pct_conf_pred_below_0.60": 0.023239,
     "mean_proba_correct": 0.522569,
     "mean_proba_wrong": 0.521102,
-    "uncertain_band_0.4_0.6_pct": 0.024273,
     "empty": {
       "cleaned": "",
       "proba": 0.862597,

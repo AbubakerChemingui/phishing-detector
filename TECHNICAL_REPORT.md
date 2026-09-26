@@ -66,7 +66,7 @@ cleaning plus the saved artifacts.
 | Dataset | Rows | Phishing | Legit | Role |
 |---|---|---|---|---|
 | `data/cleaned_emails.csv` | 82,189 | 42,847 | 39,342 | training + holdout source |
-| `data/validation/Phishing_Email.csv` | 18,650 (18,630 usable) | 7,328 | 11,322 | unseen cross-dataset holdout |
+| `data/validation/Phishing_Email.csv` | 18,650 (18,630 usable) | 7,308 | 11,322 | unseen cross-dataset holdout |
 | `data/multilingual_sample.csv` | 22 (11 FR, 11 AR) | 12 | 10 | FR/AR probe (hand-written) |
 
 Split: stratified 80/20, `random_state=42` — identical to the training

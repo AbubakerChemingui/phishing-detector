@@ -183,13 +183,18 @@ for t in (0.50, 0.65, 0.85):
 
 # ------------------------------------------------- 6. calibration + edge inputs
 correct = (m_rf.predict(Xt) == y_test)
+conf_pred = np.maximum(proba, 1.0 - proba)   # confidence in the predicted label
+out["edge_inputs"]["mean_conf_pred_label_correct"] = float(conf_pred[correct].mean())
+out["edge_inputs"]["mean_conf_pred_label_wrong"] = float(conf_pred[~correct].mean())
+out["edge_inputs"]["pct_conf_pred_below_0.60"] = float((conf_pred < 0.60).mean())
 out["edge_inputs"]["mean_proba_correct"] = float(proba[correct].mean())
 out["edge_inputs"]["mean_proba_wrong"] = float(proba[~correct].mean())
-out["edge_inputs"]["uncertain_band_0.4_0.6_pct"] = float(
-    ((proba >= 0.4) & (proba <= 0.6)).mean())
-print(f"mean proba when right={out['edge_inputs']['mean_proba_correct']:.3f} "
-      f"wrong={out['edge_inputs']['mean_proba_wrong']:.3f}; "
-      f"uncertain band={out['edge_inputs']['uncertain_band_0.4_0.6_pct']:.2%}")
+print(f"mean confidence in predicted label: "
+      f"right={out['edge_inputs']['mean_conf_pred_label_correct']:.3f} "
+      f"wrong={out['edge_inputs']['mean_conf_pred_label_wrong']:.3f}; "
+      f"below 0.60: {out['edge_inputs']['pct_conf_pred_below_0.60']:.2%} "
+      f"(mean P(phishing) right={out['edge_inputs']['mean_proba_correct']:.3f} "
+      f"wrong={out['edge_inputs']['mean_proba_wrong']:.3f})")
 
 for label, txt in [("empty", ""), ("spaces", "   "),
                    ("single_word", "hello"),

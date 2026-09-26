@@ -39,7 +39,7 @@ The `.pkl` model files are never modified by any evaluation below.
 | 4 | Legit controls: **1 FP / 15 (6.7%)** — `Control#8` ("Happy Birthday!", short benign text, model bias; no URL involved) | same script, "Legitimate Control Evaluation" block | `False positives: 1 ... Control#8` |
 | 5 | French: **54.5% accuracy, 5/5 legit flagged**; Arabic: **54.5% accuracy, 11/11 destroyed by cleaning** (model is English-only) | `<venv-python> evaluate_languages.py` | `results/multilingual_metrics.json` |
 | 6 | Unit tests: **18/18 pass** | `<venv-python> -m pytest test_system.py -v` | `18 passed` |
-| 7 | Firewall dry-run: `legit.eml` Legitimate (83.50%), `phish.eml` Phishing (85.00%) — no credentials needed | `<venv-python> email_firewall.py --scan-folder test_samples` | per-file verdicts |
+| 7 | Firewall dry-run: `legit.eml` Legitimate (85.00%), `phish.eml` Phishing (91.50%) — no credentials needed (confidences measured on the current code, where headers flow into `core.analyze_email`; identical figures with `--harden`) | `<venv-python> email_firewall.py --scan-folder test_samples` | per-file verdicts |
 | 8 | URL scoring (measured): hex-IP 0.30, decimal-IP 0.30, percent-IP 0.45, plain IP 0.30, `@` userinfo 0.05, shortener 0.15, clean URL 0.00 | `<venv-python> -c "import url_analysis as u; ..."` (see §4) | risk values as listed |
 
 ## 3. APWG alignment
@@ -76,13 +76,13 @@ Honest reading of row 3: the model already catches all 40 suite samples, so hard
 2. **Short benign emails can false-positive.** `Control#8` ("Happy Birthday!") is flagged by model bias, with no URL involved. In-corpus FPR is 1.25%, cross-dataset 2.90%.
 3. **Bare-URL-only emails can miss.** An email containing only `http://secure-login-update-verify.com/login` (no body text) is classified Legitimate by both paths: cleaning reduces it to the token `url` and no URL rule fires on a plain `.com` domain. Demonstrated in `quick_check.py`.
 4. **Override needs combined signals.** Single weak signals (shortener alone: 0.15) do not cross the 0.70 override threshold by design; recalibrating the threshold/weights requires FP data and is future work.
-5. **Live IMAP scan untested.** Dry-run covers the detection path; a live Gmail/Outlook scan needs real credentials + app password and has not been executed.
+5. **Live IMAP scan.** Exercised manually against a test Gmail account during development (phishing mail moved to Spam; fully-authenticated Google notifications kept in the inbox after the authenticated-sender veto). The committed, reproducible verification path is the dry-run (§2 row 7); live outcomes depend on the mailbox being scanned.
 6. Authenticated-mail veto trade-off: mail that fully authenticates with clean
    URLs and mid-range text scores passes — including attacker-authenticated
    mail (e.g. a phish sent from a throwaway gmail account with no shady
    links). Same trade-off commercial filters make; high-confidence model
-   calls (≥0.80) and hard URL evidence still flag.
-6. `validate_cross_dataset.py` / `validate_naive_bayes.py` need `phishing_model.pkl` / `naive_bayes_*.pkl`, which live only in the old project copy — they exit with directions instead of a traceback.
+   calls (>=0.80) and hard URL evidence still flag.
+7. `validate_cross_dataset.py` / `validate_naive_bayes.py` need `phishing_model.pkl` / `naive_bayes_*.pkl`, which live only in the old project copy — they exit with directions instead of a traceback.
 
 ## 6. Re-run everything
 

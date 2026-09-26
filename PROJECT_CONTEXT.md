@@ -47,12 +47,23 @@ phishing-detector/
 ├── rapport_technique_phishing.docx # technical report (French)
 ├── technical_report_phishing_EN.docx # technical report (English)
 └── phishing_presentation.pptx      # 13-slide presentation deck
+
+# hardening phase additions:
+├── core.py                         # shared detection core used by ALL interfaces
+├── url_analysis.py                 # URL reputation scoring (weights in comments)
+├── test_adversarial.py             # 40-sample deterministic adversarial suite
+├── gui_app.py                      # Tkinter GUI (EN/FR/AR)
+├── app.py                          # Streamlit web app
+├── evaluate_saved_model.py         # reproducible baseline + cross metrics
+├── evaluate_languages.py           # FR/AR honesty probe
+├── audit_models.py                 # guards every published number (match=True)
+└── results/                        # committed metric JSONs
 ```
 
 ## Datasets
 
 - **Training dataset**: Kaggle "Phishing Email Dataset" (Al-Subaiey et al.) — https://www.kaggle.com/datasets/naserabdullahalam/phishing-email-dataset — 82,189 emails after cleaning
-- **Cross-validation dataset**: Kaggle "Phishing Emails" (Subhajournal) — https://www.kaggle.com/datasets/subhajournal/phishingemails — 18,634 emails (11,322 legit / 7,312 phishing), used ONLY to test generalization, never trained on
+- **Cross-validation dataset**: Kaggle "Phishing Emails" (Subhajournal) — https://www.kaggle.com/datasets/subhajournal/phishingemails — 18,650 rows, 18,630 usable after cleaning (11,322 legit / 7,308 phishing), used ONLY to test generalization, never trained on
 
 ## Methodology
 
@@ -80,7 +91,7 @@ The second line deleted the uppercase `URL` token the first line had just insert
 |---|---|---|---|---|
 | Naive Bayes | 96.24% | 97.66% | 95.06% | 96.35% |
 | Random Forest | 98.59% | 98.85% | 98.44% | 98.64% |
-| XGBoost | 98.55% | 98.16% | 99.08% | 98.62% |
+| XGBoost | 96.16% | 98.39% | 94.17% | 96.23% |
 
 ### Cross-dataset performance (external, unseen dataset)
 
@@ -93,10 +104,10 @@ The second line deleted the uppercase `URL` token the first line had just insert
 ### Generalization gap (in-dataset → cross-dataset)
 
 | Model | Δ Accuracy | Δ F1-score |
-|---|---|---|
+|---|---|---|---|
 | Naive Bayes | -2.75 pts | -4.68 pts |
 | Random Forest | -0.70 pts | -1.29 pts |
-| XGBoost | -2.19 pts | -3.10 pts |
+| XGBoost | +0.20 pts | -0.71 pts |
 
 ### Confusion matrices — cross-dataset (11,322 legit / 7,312 phishing)
 
@@ -108,7 +119,7 @@ The second line deleted the uppercase `URL` token the first line had just insert
 
 ## Final decision: Random Forest is the recommended/chosen model
 
-Reasoning: XGBoost scored marginally higher in-dataset, but Random Forest generalized best to unseen data (smallest accuracy/F1 drop, fewest false negatives AND fewest false positives on the external dataset). For a real-world detector, generalization matters more than a slightly higher score on familiar data. All downstream artifacts (demo.py, email_firewall.py) use the Random Forest model (`random_forest_model.pkl` + `random_forest_vectorizer.pkl`).
+Reasoning: Random Forest wins on BOTH evaluations — best in-dataset score (98.59% vs 96.16% XGB / 96.24% NB) and best external score (97.89% vs 96.36% / 93.49%), with the fewest false negatives (66 vs 72 / 635) AND fewest false positives (328 vs 607 / 577) on unseen data. The choice was made on out-of-distribution behavior, not on in-sample score. All downstream artifacts (demo.py, email_firewall.py, gui_app.py, app.py) use the Random Forest model (`random_forest_model.pkl` + `random_forest_vectorizer.pkl`). (Note: an older version of this file showed XGB holdout ≈98.55% — that artifact predated a data refresh; the re-measured value is 96.16%, enforced by `audit_models.py`.)
 
 ## The prototype (demo.py)
 
@@ -123,15 +134,15 @@ These thresholds are illustrative, not statistically calibrated.
 
 Connects to a real inbox via IMAP (Gmail or Outlook), scans unread emails, classifies each with the Random Forest model, and if predicted phishing above `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65), copies it to the Spam/Junk folder and marks the original for deletion (IMAP move pattern). Needs an app-specific password (not the main account password) since 2FA blocks regular IMAP logins.
 
-**Status: written and logically complete, but has NOT been extensively tested against a real live inbox yet** — this is a good area to focus on next if continuing this work. Things worth checking: exact Spam folder naming per provider, handling of HTML-only emails (currently only extracts `text/plain` parts), rate limiting / running on a schedule rather than once.
+**Status: exercised manually against a live Gmail test inbox (phishing moved to Spam; authenticated legit mail kept in inbox after the header-aware fix).** The firewall now feeds full headers into the analysis (`core.analyze_email(..., headers=...)`) and ships a credentials-free dry-run (`--scan-folder test_samples`). Remaining polish: per-provider Spam folder naming, HTML-only handling, and scheduled/continuous operation.
 
 ## Known limitations (already documented in the report)
 
-- Text-only — ignores headers, sender domain reputation, attachments
-- Cleaning strips all punctuation and digits — loses signals like "amaz0n.com" style lookalike domains
-- No adversarial testing (phishing crafted to evade the model)
+- Text-only model — headers and URLs are handled by rule layers in `core.py`/`url_analysis.py` (SPF/DKIM/DMARC check; URL risk), attachments ignored
+- Cleaning strips punctuation and digits — partially compensated by the URL/head hardening rules and text normalization
 - Only one external dataset used for cross-validation
-- English-only — no French/Arabic phishing coverage (relevant since I'm in Tunisia)
+- English-only — French/Arabic degrade (measured ~54.5% on both; Arabic destroyed by cleaning); see `results/multilingual_metrics.json`
+- Adversarial testing now exists (`test_adversarial.py`): 40/40 raw and hardened, 1/15 legit FP — defense-in-depth, not a detection-rate gain
 
 ## Deliverables already completed
 
