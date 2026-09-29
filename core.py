@@ -142,6 +142,34 @@ def check_auth_pass(headers_text: str) -> bool:
             and 'dmarc=pass' in text_lower)
 
 
+# Transactional senders whose mail is high-volume legitimate AND
+# unspoofable-when-authenticated (they publish strict DMARC policies, so a
+# pass means Google/Microsoft/Apple/Amazon really sent it). Consumer domains
+# (gmail.com, outlook.com, ...) are DELIBERATELY excluded: anyone can
+# register attacker@gmail.com and fully authenticate it.
+# Extend with: set KNOWN_SENDERS="example.com,other.org" (comma-separated).
+_DEFAULT_KNOWN_AUTHENTICATED_SENDERS = frozenset({
+    "google.com", "accounts.google.com", "youtube.com",
+    "microsoft.com", "account.microsoft.com",
+    "apple.com", "amazon.com",
+})
+_extra_senders = os.environ.get("KNOWN_SENDERS", "")
+KNOWN_AUTHENTICATED_SENDERS = frozenset(
+    _DEFAULT_KNOWN_AUTHENTICATED_SENDERS
+    | {d.strip().lower() for d in _extra_senders.split(",") if d.strip()}
+)
+
+
+def sender_domain(headers_text: str) -> str:
+    """Extract the domain from the first From: header line ('' if none)."""
+    for line in headers_text.splitlines():
+        s = line.strip()
+        if s.lower().startswith("from:"):
+            m = re.search(r"[\w.+-]+@([\w.-]+\.\w+)", s[5:])
+            return m.group(1).lower() if m else ""
+    return ""
+
+
 def get_url_risk(raw_text: str) -> float:
     """Wrapper around url_analysis.get_url_risk for clarity."""
     return url_analysis.get_url_risk(raw_text)
@@ -271,12 +299,15 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
         # Boost confidence to at least high‑threshold level so UI shows strong alert
         conf = max(conf, 0.85)
     elif (auth_pass and url_risk < 0.50 and pred_label == "Phishing"
-            and conf < 0.80):
-        # Authenticated-sender veto: fully authenticated (SPF+DKIM+DMARC pass)
-        # with clean URLs and only moderate model suspicion is legitimate
-        # mail. Hard URL evidence (above) always wins over this veto, as does
-        # high model confidence. Confidence stays honestly low:
-        # authentication tipped an uncertain call.
+            and conf < 0.80
+            and sender_domain(auth_scope) in KNOWN_AUTHENTICATED_SENDERS):
+        # Authenticated-sender veto: a fully authenticated message FROM A
+        # KNOWN SERVICE with clean URLs and only moderate model suspicion is
+        # legitimate mail. Consumer domains are excluded on purpose (anyone
+        # can register attacker@gmail.com and authenticate it). Hard URL
+        # evidence (above) always wins over this veto, as does high model
+        # confidence. Confidence stays honestly low: authentication tipped
+        # an uncertain call.
         pred_label = "Legitimate"
         raw_pred = 0
         conf = 1.0 - conf
@@ -373,8 +404,11 @@ def analyze_email_with_forwarding(subject: str, body: str, med_thresh: float = 0
     outer["forwarded_checked"] = inner_subject is not None
     if inner_subject is None:
         return outer
+    # NOTE: the inner message is analyzed WITHOUT the outer headers.
+    # Outer authentication vouches for the outer sender only; it says
+    # nothing about forwarded content (which may claim any sender).
     inner = analyze_email(f"{inner_subject} {inner_body}", med_thresh, high_thresh,
-                          harden_first, headers)
+                          harden_first, "")
     outer["inner_proba"] = inner["proba"]
     outer["inner_prediction"] = inner["prediction"]
     if inner["proba"] > outer["proba"]:

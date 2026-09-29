@@ -42,13 +42,16 @@ During the audit and testing phase, the following issues were identified and fix
    - Ensured that the GUI's `--test` mode still works correctly.
 
 3. **Verified Existing Scripts**:
-   - `demo.py`: Works correctly (verified via `test_cli_demo`).
-   - `email_firewall.py`: No changes required; uses the same core logic.
-   - `gui_app.py`: Verified via `--test` mode and manual testing.
+    - `demo.py`: Works correctly (verified via `test_cli_demo`).
+    - `email_firewall.py`: Since this report: headers flow into analysis,
+      authenticated-sender veto, forwarded-content analysis, 0.65 move gate,
+      audit log, Outlook OAuth2, loop-scheduler fix — see SECURITY_REPORT.md.
+    - `gui_app.py`: Verified via `--test` mode and manual testing.
 
 ## Test Results
-All tests in `test_system.py` pass:
-- 18 tests passed, 0 failed.
+All tests in `test_system.py` pass (updated 2026-09-29; this report predates
+the forwarding/veto/gate tests — SECURITY_REPORT.md is authoritative):
+- 23 tests passed, 0 failed.
 - Tests cover:
   - Model and vectorizer loading.
   - Preprocessing functions (`clean_email_text`, `apply_hardening`, `strip_html`).

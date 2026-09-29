@@ -327,5 +327,67 @@ def test_forwarded_legit_kept():
     assert res["prediction"] == "Legitimate", f"legit forward flagged: {res}"
 
 
+def test_forwarded_phish_with_outer_auth_still_caught():
+    """Outer authentication must NOT vouch for forwarded content: a phish
+    forwarded from a genuine Gmail account is still caught via the inner
+    message (which is analyzed without the outer headers)."""
+    import core
+    core.load_artifacts()
+    hdrs = ("From: Abubaker <abubakerchemingui@gmail.com>\n"
+            "Authentication-Results: mx.google.com; dkim=pass spf=pass dmarc=pass")
+    subject = "Fwd: Verify Your Account"
+    body = ("FYI team - is this legit?\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Security Dept <security@fake-bank-login.com>\n"
+            "Subject: Verify Your Account\n\n"
+            "Dear user,\n"
+            "We have detected suspicious activity on your account.\n"
+            "Please click here to verify your credentials: http://fake-bank-login.com\n")
+    res = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85, False, hdrs)
+    assert res["forwarded_checked"] is True
+    assert res["prediction"] == "Phishing", f"authenticated forward of phish missed: {res}"
+
+
+def test_known_service_veto_and_unknown_sender():
+    """Fully-authenticated mail from a KNOWN service with clean URLs and
+    moderate suspicion is kept; the same text from a generic Gmail account
+    (attacker-registerable) is still flagged."""
+    import core
+    core.load_artifacts()
+    subject = "Finish setting up Google on your device"
+    body = ("Take a minute to set up Google apps and settings on your new "
+            "device. Finish setup now: http://c.gle/setup-guide. This email "
+            "was sent because you recently signed in.")
+    svc_hdrs = ("From: Support <support@google.com>\n"
+                "Authentication-Results: mx.google.com; dkim=pass spf=pass dmarc=pass")
+    gen_hdrs = ("From: Someone <someone@gmail.com>\n"
+                "Authentication-Results: mx.google.com; dkim=pass spf=pass dmarc=pass")
+    r_svc = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85, False, svc_hdrs)
+    r_gen = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85, False, gen_hdrs)
+    assert r_svc["prediction"] == "Legitimate", f"known-service mail flagged: {r_svc}"
+    assert r_gen["prediction"] == "Phishing", f"unknown-sender phish text missed: {r_gen}"
+
+
+def test_attacker_registered_gmail_phish_never_vetoed():
+    """A phish from an attacker-registerable account must never be vetoed:
+    consumer domains are excluded from the known-service veto by design,
+    at any confidence level."""
+    import core
+    core.load_artifacts()
+    hdrs = ("From: Security <attacker.x92@gmail.com>\n"
+            "Authentication-Results: mx.google.com; dkim=pass spf=pass dmarc=pass")
+    cases = [
+        ("Update your payment information",
+         "Hi there, our records show your payment method is about to expire. "
+         "Please update your card details now: http://update-payment-secure.com/update"),
+        ("URGENT: Your Account Has Been Suspended!",
+         "Dear Customer, your access will be permanently terminated within 24 hours. "
+         "Click here immediately to verify your identity: http://secure-login-update-verify.com/login"),
+    ]
+    for subject, body in cases:
+        res = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85, False, hdrs)
+        assert res["prediction"] == "Phishing", f"attacker phish vetoed: {res}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

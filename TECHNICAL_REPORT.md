@@ -36,7 +36,7 @@ attachment analysis, sender-domain reputation feeds.
 
 ```
                     +----------------- email_firewall.py ------------------+
-                    | IMAP inbox -> classify -> move phishing to Spam     |
+                    | IMAP inbox -> classify -> move confident phishing to Spam |
                     | --scan-folder dry-run (no network) | --harden flag  |
                     +------------------------+---------------------------+
                                              |
@@ -171,14 +171,19 @@ a separate pipeline and is future work (§13).
 
 ## 11. Edge behavior and known limitations
 
-1. Empty/whitespace/Arabic input cleans to length 0 → proba 0.863 PHISHING
-   (fail-closed; defensible for a firewall, disclosed).
+1. Empty/whitespace/non-Latin-only input is refused, not classified ("No
+   analyzable English text…"; demo refuses likewise). The underlying
+   zero-vector model bias (proba 0.863 PHISHING on empty vectors) is measured
+   in `MODEL_AUDIT.md` but unreachable through any interface.
 2. Single common words ("hello") score ~0.98 PHISHING — short-text bias.
 3. Bare-URL-only emails (no body) classify Legitimate (cleaning reduces them
    to the `url` token; no rule fires on plain `.com` domains).
 4. Single weak URL signals (shortener alone: 0.15) do not cross the 0.70
    override by design; recalibration needs FP data.
-5. Live IMAP scan untested (dry-run covers the detection path).
+5. Live IMAP scan exercised manually on a test Gmail account (moves, vetoes,
+   threshold gate, loop scheduler, and audit log all verified live; see
+   `firewall.log` format). Outlook OAuth2 path is code-complete but needs a
+   first live sign-in.
 
 ## 12. Reproducibility
 
@@ -186,7 +191,7 @@ Interpreter: `C:\Users\Abubaker\phishing-detector\phishing_env\Scripts\python.ex
 Dependencies: `requirements.txt` (pinned). From the repo root:
 
 ```powershell
-<venv-python> -m pytest test_system.py -v          # 18 passed
+<venv-python> -m pytest test_system.py -v          # 23 passed
 <venv-python> evaluate_saved_model.py               # results/baseline_metrics.json + cross_dataset_metrics.json
 <venv-python> test_adversarial.py                   # adversarial_results.txt
 <venv-python> evaluate_languages.py                 # results/multilingual_metrics.json
@@ -205,5 +210,31 @@ URL/header/text-normalization defenses without touching the model; every
 limitation above is measured and documented rather than hidden. Recommended
 next steps if scope expands: (a) a genuine FR/AR pipeline (translation
 pre-step or per-script models), (b) threshold/weight recalibration against
-collected false positives, (c) closing the bare-URL gap, (d) live-IMAP
-validation with a monitored account.
+collected false positives, (c) closing the bare-URL gap, (d) first live
+Outlook OAuth2 sign-in and loop test, (e) sender-reputation layer for
+attacker-authenticated mail (the one residual the content+auth design
+cannot see — see SECURITY_REPORT.md §5 item 6).
+
+## Appendix A — Amendments since initial issue
+
+Features added after this report was first written (each verified, tested,
+and committed; details in SECURITY_REPORT.md and MODEL_AUDIT.md):
+
+- **Authenticated-sender veto** (`core.check_auth_pass`): SPF+DKIM+DMARC pass
+  from a known service (google.com, accounts.google.com, microsoft.com,
+  apple.com, amazon.com, env-extendable via `KNOWN_SENDERS`) with clean URLs
+  and confidence < 0.80 returns Legitimate at honestly low confidence.
+  Consumer domains are excluded (anyone can authenticate attacker@gmail.com).
+- **Forwarded-content analysis** (`core.split_forwarded`,
+  `analyze_email_with_forwarding`): inner message scored separately without
+  outer headers; most-suspicious verdict wins; decoys cannot lower it.
+- **Move-threshold gate**: live moves require `Phishing` at confidence ≥
+  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65); marginal calls stay for
+  human review.
+- **Audit log**: every firewall verdict/action timestamped to `firewall.log`.
+- **Outlook OAuth2** (`outlook_oauth.py`): device-code sign-in + XOAUTH2 IMAP
+  (Microsoft killed password IMAP); Gmail path untouched.
+- **Empty-input refusal** in demo/CLI matching the core; GUI Clear button
+  resets thresholds; loop scheduler fixed (slept only on failure → busy-spin).
+- **Byte-stable metrics**: evaluators round to 6 decimals (multithreaded BLAS
+  flips the last bit between runs).
