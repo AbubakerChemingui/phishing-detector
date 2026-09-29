@@ -44,7 +44,7 @@ During the audit and testing phase, the following issues were identified and fix
 3. **Verified Existing Scripts**:
     - `demo.py`: Works correctly (verified via `test_cli_demo`).
     - `email_firewall.py`: Since this report: headers flow into analysis,
-      authenticated-sender veto, forwarded-content analysis, 0.65 move gate,
+      authenticated-sender veto, forwarded-content analysis, 0.60 move gate,
       audit log, Outlook OAuth2, loop-scheduler fix — see SECURITY_REPORT.md.
     - `gui_app.py`: Verified via `--test` mode and manual testing.
 

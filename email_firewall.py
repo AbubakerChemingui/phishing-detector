@@ -47,13 +47,13 @@ def log_line(text=""):
     except Exception:
         pass
 PROVIDER = os.environ.get("EMAIL_PROVIDER") or os.environ.get("PROVIDER") or "gmail"
-PHISHING_CONFIDENCE_THRESHOLD = 0.65
+PHISHING_CONFIDENCE_THRESHOLD = 0.60
 _env_threshold = os.environ.get("PHISHING_CONFIDENCE_THRESHOLD")
 if _env_threshold is not None:
     try:
         PHISHING_CONFIDENCE_THRESHOLD = float(_env_threshold)
     except ValueError:
-        print(f"warning: PHISHING_CONFIDENCE_THRESHOLD='{_env_threshold}' is not a number, using default 0.65")
+        print(f"warning: PHISHING_CONFIDENCE_THRESHOLD='{_env_threshold}' is not a number, using default 0.60")
 
 PROVIDER_SETTINGS = {
     "gmail": {"imap_server": "imap.gmail.com", "spam_folder": '[Gmail]/Spam'},
@@ -320,11 +320,12 @@ def run_scan():
             log_line(f"  Subject: {subject}")
             log_line(f"  Result:  {prediction} (confidence: {confidence})")
 
-            # Move only high-confidence phishing to Spam: the label comes from the
-            # hardened core, and PHISHING_CONFIDENCE_THRESHOLD (default 0.65, set
+            # Move only confident phishing to Spam: the label comes from the
+            # hardened core, and PHISHING_CONFIDENCE_THRESHOLD (default 0.60, set
             # via env) keeps marginal calls in the inbox for human review.
-            # Measured trade-off on 16,438 emails: 0.65 halves the FPR
-            # (1.26% -> 0.53%) for ~3pp of recall (see MODEL_AUDIT.md).
+            # Measured trade-off on 16,438 emails (see MODEL_AUDIT.md):
+            # 0.60 -> recall 96.55%, FPR 0.80%; 0.65 -> 95.36%/0.53%.
+            # Live testing showed 0.65 let real phish through (0.638 kept).
             is_phishing = (prediction == "Phishing"
                            and conf_value >= PHISHING_CONFIDENCE_THRESHOLD)
             if prediction == "Phishing" and not is_phishing:

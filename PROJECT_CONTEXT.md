@@ -132,7 +132,7 @@ These thresholds are illustrative, not statistically calibrated.
 
 ## The email firewall (email_firewall.py)
 
-Connects to a real inbox via IMAP (Gmail or Outlook), scans unread emails, classifies each with the Random Forest model, and if predicted phishing above `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65), copies it to the Spam/Junk folder and marks the original for deletion (IMAP move pattern). Needs an app-specific password (not the main account password) since 2FA blocks regular IMAP logins.
+Connects to a real inbox via IMAP (Gmail or Outlook), scans unread emails, classifies each with the Random Forest model, and if predicted phishing above `PHISHING_CONFIDENCE_THRESHOLD` (default 0.60), copies it to the Spam/Junk folder and marks the original for deletion (IMAP move pattern). Needs an app-specific password (not the main account password) since 2FA blocks regular IMAP logins.
 
 **Status: exercised manually against a live Gmail test inbox (phishing moved to Spam; authenticated legit mail kept in inbox after the header-aware fix).** The firewall now feeds full headers into the analysis (`core.analyze_email(..., headers=...)`) and ships a credentials-free dry-run (`--scan-folder test_samples`). Remaining polish: per-provider Spam folder naming, HTML-only handling, and scheduled/continuous operation.
 

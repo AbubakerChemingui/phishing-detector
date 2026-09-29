@@ -229,7 +229,9 @@ and committed; details in SECURITY_REPORT.md and MODEL_AUDIT.md):
   `analyze_email_with_forwarding`): inner message scored separately without
   outer headers; most-suspicious verdict wins; decoys cannot lower it.
 - **Move-threshold gate**: live moves require `Phishing` at confidence ≥
-  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65); marginal calls stay for
+  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.60 — lowered from 0.65 after
+  live testing showed 0.65 let real phish through at 0.638; measured
+  trade-off: 96.55% recall / 0.80% FPR); marginal calls stay for
   human review.
 - **Audit log**: every firewall verdict/action timestamped to `firewall.log`.
 - **Outlook OAuth2** (`outlook_oauth.py`): device-code sign-in + XOAUTH2 IMAP

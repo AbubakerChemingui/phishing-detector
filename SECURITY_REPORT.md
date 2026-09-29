@@ -31,7 +31,7 @@ TF-IDF + Random Forest email classifier (`random_forest_model.pkl`,
 - `email_firewall.py` – IMAP scanner (Gmail/Outlook) routing every message
   through `core.analyze_email()`, plus `--scan-folder` dry-run and `--harden`.
   Live moves are gated: only `Phishing` verdicts at confidence ≥
-  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.65, env-configurable) go to
+  `PHISHING_CONFIDENCE_THRESHOLD` (default 0.60, env-configurable) go to
   Spam; marginal calls stay in the inbox for human review.
 
 The `.pkl` model files are never modified by any evaluation below.
@@ -83,7 +83,7 @@ During verification we found and fixed real defects (all covered by the suite):
    legit forwards stay legit). A decoy marker can never lower the verdict
    (fail-closed). Follow-up live find: French Gmail writes `De :` for From,
    which the English-only header skipper choked on (0.85 → 0.645, just under
-   the 0.65 move gate) — header labels are now multilingual (EN+FR,
+   the then-0.65 move gate) — header labels are now multilingual (EN+FR,
    colon-spacing tolerant); re-measured at 0.855. Covered by three
    regression tests.
 
