@@ -81,7 +81,11 @@ During verification we found and fixed real defects (all covered by the suite):
    `analyze_email_with_forwarding()` keeps the more suspicious verdict
    (verified: forwarded phish scores 0.865 inner vs 0.585 outer → moved;
    legit forwards stay legit). A decoy marker can never lower the verdict
-   (fail-closed). Covered by two regression tests.
+   (fail-closed). Follow-up live find: French Gmail writes `De :` for From,
+   which the English-only header skipper choked on (0.85 → 0.645, just under
+   the 0.65 move gate) — header labels are now multilingual (EN+FR,
+   colon-spacing tolerant); re-measured at 0.855. Covered by three
+   regression tests.
 
 Honest reading of row 3: the model already catches all 40 suite samples, so hardening adds a measured **+0pp** there. The hardening's value is defense-in-depth (normalizing obfuscated text, scoring malicious URLs) rather than a detection-rate gain on this suite — stated plainly so no reviewer can call it inflated.
 

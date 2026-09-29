@@ -358,7 +358,19 @@ def _is_forward_marker(line: str) -> bool:
 
 def split_forwarded(subject: str, body: str):
     """If body contains a forwarded message, return (inner_subject, inner_body).
-    Otherwise return (None, None)."""
+    Otherwise return (None, None).
+
+    Handles English AND French Gmail forward blocks (French Gmail writes
+    'De :' for From and may keep 'Subject:'/'To:' or use 'Objet:').
+    Colon spacing is tolerated ('De :' vs 'De:')."""
+    # Header labels that may prefix forwarded-header lines (EN + FR).
+    header_labels = ("from:", "de:", "date:", "subject:", "objet:",
+                     "to:", "cc:", "cci:", "reply-to:")
+
+    def norm_label(s: str) -> str:
+        # "De : X" -> "de:x" so spacing variants match the labels above.
+        return re.sub(r"\s*:\s*", ":", s.strip().lower())
+
     lines = body.splitlines()
     start = None
     for i, ln in enumerate(lines):
@@ -370,12 +382,12 @@ def split_forwarded(subject: str, body: str):
     tail = lines[start:]
     inner_subject = None
     pos = 0
-    for j, ln in enumerate(tail[:8]):
+    for j, ln in enumerate(tail[:10]):
         s = ln.strip()
-        low = s.lower()
-        if low.startswith("subject:"):
-            inner_subject = s[8:].strip()
-        if (low.startswith(("from:", "date:", "subject:", "to:", "cc:")) or s == ""):
+        n = norm_label(s)
+        if n.startswith("subject:") or n.startswith("objet:"):
+            inner_subject = s.split(":", 1)[1].strip()
+        if any(n.startswith(lbl) for lbl in header_labels) or s == "":
             pos = j + 1
             continue
         break

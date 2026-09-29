@@ -389,5 +389,27 @@ def test_attacker_registered_gmail_phish_never_vetoed():
         assert res["prediction"] == "Phishing", f"attacker phish vetoed: {res}"
 
 
+def test_forwarded_phish_french_headers_caught():
+    """French Gmail writes 'De :' for From: header skipping must be
+    multilingual, or ~18 neutral tokens dilute the inner phish (measured
+    live: 0.85 -> 0.65, kept instead of moved)."""
+    import core
+    core.load_artifacts()
+    subject = "Fwd: Verify Your Account"
+    body = ("FYI?\n\n"
+            "---------- Forwarded message ---------\n"
+            "De : Abubaker Chemingui <abubakerchemingui@gmail.com>\n"
+            "Date: mar. 29 sept. 2026\n"
+            "Subject: Verify Your Account\n"
+            "To: blorbomedia@gmail.com\n\n"
+            "Dear user,\n"
+            "We have detected suspicious activity on your account.\n"
+            "Please click here to verify your credentials: http://fake-bank-login.com\n")
+    res = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85)
+    assert res["forwarded_checked"] is True
+    assert res["prediction"] == "Phishing", f"FR-forwarded phish missed: {res}"
+    assert float(res["confidence"]) >= 0.65, f"below move gate: {res}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
