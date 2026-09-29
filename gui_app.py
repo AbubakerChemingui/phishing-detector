@@ -834,6 +834,13 @@ class PhishingDetectorGUI:
         self.lbl_alert.config(text="-", fg=self.FG_COLOR)
         self.lbl_words.config(text=self.tr('none'))
         self.last_analysis = None
+        # Reset options to initial values. Programmatic .set() does not fire
+        # the Scale command callback, so refresh the value labels manually.
+        self.med_thresh_var.set(0.65)
+        self.high_thresh_var.set(0.85)
+        self.lbl_med_val.config(text="0.65")
+        self.lbl_high_val.config(text="0.85")
+        self.harden_var.set(False)
         self.set_status(self.tr('status_cleared'))
 
     def action_save_report(self):

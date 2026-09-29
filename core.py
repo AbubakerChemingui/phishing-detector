@@ -197,6 +197,20 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
     cleaned = clean_email_text(processed_input)
 
     if not cleaned or cleaned.strip() == "":
+        if processed_input and processed_input.strip():
+            # The user typed something, but cleaning erased it all: only
+            # numbers/symbols, or a non-Latin script (e.g. Arabic). The
+            # pipeline is English-only, so there is nothing to classify.
+            # This is deliberately different from the empty-input message.
+            return {
+                "prediction": "-",
+                "raw_pred": None,
+                "confidence": 0.0,
+                "confidence_str": "-",
+                "alert": "No analyzable English text: this system only supports English e-mails",
+                "top_words": [],
+                "color": "#666666"
+            }
         return {
             "prediction": "-",
             "raw_pred": None,
