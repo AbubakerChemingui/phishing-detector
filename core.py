@@ -209,17 +209,19 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
                 "confidence_str": "-",
                 "alert": "No analyzable English text: this system only supports English e-mails",
                 "top_words": [],
-                "color": "#666666"
+                "color": "#666666",
+                "proba": 0.0
             }
         return {
             "prediction": "-",
             "raw_pred": None,
             "confidence": 0.0,
             "confidence_str": "-",
-            "alert": "Please enter e-mail text to analyse",
-            "top_words": [],
-            "color": "#666666"
-        }
+                "alert": "Please enter e-mail text to analyse",
+                "top_words": [],
+                "color": "#666666",
+                "proba": 0.0
+            }
 
     # Transform
     X = VECTORIZER.transform([cleaned])
@@ -230,6 +232,7 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
         probas = MODEL.predict_proba(X)[0]
         conf = float(probas[pred_idx])
     else:
+        probas = None
         conf = 1.0
 
     # Assume 1 = Phishing, 0 = Legitimate (or string labels if encoded)
@@ -239,6 +242,15 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
     else:
         pred_label = "Legitimate"
         raw_pred = 0
+
+    # P(phishing) for forwarding comparison and diagnostics.
+    if probas is not None:
+        try:
+            proba = float(probas[list(MODEL.classes_).index(1)])
+        except ValueError:
+            proba = conf if pred_label == "Phishing" else 1.0 - conf
+    else:
+        proba = 1.0 if pred_label == "Phishing" else 0.0
 
     # --- APWG‑aligned additive signals ---
     # URL reputation looks at content plus headers (e.g. List-Unsubscribe
@@ -289,7 +301,86 @@ def analyze_email(raw_text: str, med_thresh: float, high_thresh: float, harden_f
         "raw_pred": raw_pred,
         "confidence": conf,
         "confidence_str": f"{conf * 100:.2f} %",
+        "proba": proba,
         "alert": alert_tier,
         "top_words": top_words,
         "color": color
     }
+
+
+# ---------------------------------------------------------------------------
+# 5. Forwarded-message handling
+# ---------------------------------------------------------------------------
+# Forwarding wraps the original in boilerplate (marker line + From/Date/
+# Subject/To lines), which dilutes phishing vocabulary below detection
+# (measured live: 0.85 -> 0.36 on a forwarded phish). The fix analyzes the
+# inner content separately and keeps the MORE suspicious verdict.
+FORWARD_SUBJECT_PREFIXES = ("fwd:", "fw:", "tr:", "transfere:", "transféré:")
+
+
+def _is_forward_marker(line: str) -> bool:
+    """True for Gmail-style separator lines around 'forwarded message'."""
+    s = line.strip().strip("-").strip().lower()
+    return s in ("forwarded message", "begin forwarded message",
+                 "message transféré", "début du message transféré")
+
+
+def split_forwarded(subject: str, body: str):
+    """If body contains a forwarded message, return (inner_subject, inner_body).
+    Otherwise return (None, None)."""
+    lines = body.splitlines()
+    start = None
+    for i, ln in enumerate(lines):
+        if _is_forward_marker(ln):
+            start = i + 1
+            break
+    if start is None:
+        return None, None
+    tail = lines[start:]
+    inner_subject = None
+    pos = 0
+    for j, ln in enumerate(tail[:8]):
+        s = ln.strip()
+        low = s.lower()
+        if low.startswith("subject:"):
+            inner_subject = s[8:].strip()
+        if (low.startswith(("from:", "date:", "subject:", "to:", "cc:")) or s == ""):
+            pos = j + 1
+            continue
+        break
+    inner_body = "\n".join(tail[pos:]).strip()
+    if not inner_body:
+        return None, None
+    if inner_subject is None:
+        inner_subject = subject.strip()
+        low_sub = inner_subject.lower()
+        for p in FORWARD_SUBJECT_PREFIXES:
+            if low_sub.startswith(p):
+                inner_subject = inner_subject[len(p):].strip()
+                break
+    return inner_subject, inner_body
+
+
+def analyze_email_with_forwarding(subject: str, body: str, med_thresh: float = 0.65,
+                                  high_thresh: float = 0.85, harden_first: bool = False,
+                                  headers: str = "") -> dict:
+    """Analyze outer message and, when present, the forwarded inner message;
+    return the MORE suspicious verdict (higher P(phishing)). A decoy marker
+    can never lower the verdict below the outer analysis (fail-closed)."""
+    outer = analyze_email(f"{subject} {body}", med_thresh, high_thresh,
+                          harden_first, headers)
+    inner_subject, inner_body = split_forwarded(subject, body)
+    outer["forwarded_checked"] = inner_subject is not None
+    if inner_subject is None:
+        return outer
+    inner = analyze_email(f"{inner_subject} {inner_body}", med_thresh, high_thresh,
+                          harden_first, headers)
+    outer["inner_proba"] = inner["proba"]
+    outer["inner_prediction"] = inner["prediction"]
+    if inner["proba"] > outer["proba"]:
+        inner["forwarded_checked"] = True
+        inner["outer_proba"] = outer["proba"]
+        inner["inner_proba"] = inner["proba"]
+        inner["inner_prediction"] = inner["prediction"]
+        return inner
+    return outer

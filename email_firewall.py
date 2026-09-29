@@ -72,10 +72,12 @@ except Exception as e:
     vectorizer = None
 
 
-def diagnose_email(raw, headers=""):
+def diagnose_email(subject, body, headers=""):
     """Print the full decision breakdown for one email: model probability,
-    URL-risk flags, auth-header checks, final verdict, top words. Use this to
-    find out WHY a legitimate email was flagged (or a phish missed)."""
+    URL-risk flags, auth-header checks, forwarded-content analysis,
+    final verdict, top words. Use this to find out WHY a legitimate email
+    was flagged (or a phish missed)."""
+    raw = f"{subject} {body}"
     text = core.apply_hardening(raw) if HARDEN_FIRST else raw
     cleaned = core.clean_email_text(text)
     X = core.VECTORIZER.transform([cleaned])
@@ -85,8 +87,8 @@ def diagnose_email(raw, headers=""):
     feats = url_analysis.analyze_url_features(scope)
     auth = core.check_auth_headers(auth_scope)
     authp = core.check_auth_pass(auth_scope)
-    result = core.analyze_email(raw, med_thresh=0.65, high_thresh=0.85,
-                                harden_first=HARDEN_FIRST, headers=headers)
+    result = core.analyze_email_with_forwarding(subject, body, med_thresh=0.65, high_thresh=0.85,
+                                                harden_first=HARDEN_FIRST, headers=headers)
     print(f"  model P(phishing) = {proba:.3f} (cleaned chars={len(cleaned)})")
     log_line(f"  url_risk = {feats['url_risk']:.2f} "
              f"(urls={feats['url_count']:.0f} ip={feats['has_ip']:.0f} "
@@ -95,6 +97,9 @@ def diagnose_email(raw, headers=""):
              f"homo={feats['homograph']:.0f} pct={feats['percent_encoded']:.0f} "
              f"hexip={feats['hex_ip']:.0f})")
     log_line(f"  auth_fail = {auth}   auth_pass = {authp}")
+    if result.get("forwarded_checked"):
+        log_line(f"  forwarded content: inner={result.get('inner_prediction')} "
+                 f"(P={result.get('inner_proba', 0.0):.3f}) outer P={result.get('outer_proba', proba):.3f}")
     log_line(f"  verdict = {result['prediction']} ({result['confidence_str']})")
     print(f"  top_words = {', '.join(w for w, _s in result['top_words'][:8])}")
 
@@ -126,32 +131,32 @@ def scan_folder(folder_path, verbose=False):
         subject = decode_mime_words(msg.get("Subject", ""))
         body = get_email_body(msg)
         if subject.strip() or body.strip():
-            text = f"{subject} {body}"
             headers_text = "\n".join(f"{k}: {v}" for k, v in msg.items())
         else:
-            text, headers_text = raw, ""
-        # Use hardened analysis
-        result = core.analyze_email(text, med_thresh=0.65, high_thresh=0.85,
-                                    harden_first=HARDEN_FIRST, headers=headers_text)
+            # plain .txt note without headers: analyze the raw text as the body
+            subject, body, headers_text = "", raw, ""
+        # Use hardened analysis (forwarding-aware: inner content can upgrade the verdict)
+        result = core.analyze_email_with_forwarding(subject, body, med_thresh=0.65, high_thresh=0.85,
+                                                    harden_first=HARDEN_FIRST, headers=headers_text)
         verdict = result["prediction"]
         conf = result["confidence_str"]
         log_line(f"{fname}: {verdict} ({conf})")
         if verbose:
-            diagnose_email(text, headers_text)
+            diagnose_email(subject, body, headers_text)
 
 
 def classify_email(subject, body, headers=""):
     """
-    Classify an email using the hardened core logic (URL + header checks + model).
+    Classify an email using the hardened core logic (URL + header checks + model),
+    including forwarded-content analysis (most suspicious verdict wins).
     headers: raw header block (enables SPF/DKIM/DMARC pass/fail signals).
     Returns (prediction_label, confidence_str, confidence_float) where
     prediction_label is "Phishing" or "Legitimate".
     """
     if model is None or vectorizer is None:
         raise RuntimeError("model files could not be loaded")
-    full_text = f"{subject} {body}"
-    result = core.analyze_email(full_text, med_thresh=0.65, high_thresh=0.85,
-                                harden_first=HARDEN_FIRST, headers=headers)
+    result = core.analyze_email_with_forwarding(subject, body, med_thresh=0.65, high_thresh=0.85,
+                                                harden_first=HARDEN_FIRST, headers=headers)
     return result["prediction"], result["confidence_str"], float(result["confidence"])
 
 

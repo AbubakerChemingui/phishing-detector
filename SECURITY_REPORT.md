@@ -67,6 +67,14 @@ During verification we found and fixed real defects (all covered by the suite):
    real false positives on fully-authenticated Google mail (measured:
    password-change alert at P=0.535 and onboarding mail at P=0.670 both
    returned to Legitimate via the veto).
+7. Forwarded phishing slipped through: Gmail's forwarding wrapper (marker +
+   From/Date/Subject/To lines) dilutes phishing vocabulary until TF-IDF
+   weights collapse (measured live: 0.85 → 0.36, kept instead of moved).
+   `core.split_forwarded()` extracts the inner message and
+   `analyze_email_with_forwarding()` keeps the more suspicious verdict
+   (verified: forwarded phish scores 0.865 inner vs 0.585 outer → moved;
+   legit forwards stay legit). A decoy marker can never lower the verdict
+   (fail-closed). Covered by two regression tests.
 
 Honest reading of row 3: the model already catches all 40 suite samples, so hardening adds a measured **+0pp** there. The hardening's value is defense-in-depth (normalizing obfuscated text, scoring malicious URLs) rather than a detection-rate gain on this suite — stated plainly so no reviewer can call it inflated.
 

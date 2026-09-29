@@ -292,5 +292,40 @@ def test_cli_demo():
     assert "Result: PHISHING" in stdout or "Result: LEGIT" in stdout
     # We'll just check that it runs.
 
+def test_forwarded_phishing_caught():
+    """A phish wrapped in forwarding boilerplate must still be caught
+    (wrapping dilutes phishing vocabulary below detection otherwise)."""
+    import core
+    core.load_artifacts()
+    subject = "Fwd: Verify Your Account"
+    body = ("FYI team - is this legit?\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Security Dept <security@fake-bank-login.com>\n"
+            "Date: Mon, 21 Sep 2026 12:00:00 +0000\n"
+            "Subject: Verify Your Account\n"
+            "To: victim@example.com\n\n"
+            "Dear user,\n"
+            "We have detected suspicious activity on your account.\n"
+            "Please click here to verify your credentials: http://fake-bank-login.com\n")
+    res = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85)
+    assert res["forwarded_checked"] is True
+    assert res["prediction"] == "Phishing", f"forwarded phish missed: {res}"
+
+
+def test_forwarded_legit_kept():
+    """A legit forwarded email must not be flagged."""
+    import core
+    core.load_artifacts()
+    subject = "Fwd: Team lunch"
+    body = ("Looping you in.\n\n"
+            "---------- Forwarded message ---------\n"
+            "From: Sami <sami@example.com>\n"
+            "Subject: Team lunch\n\n"
+            "Hi all, lunch on Friday at 12:30 in the main cafeteria. See you there.\n")
+    res = core.analyze_email_with_forwarding(subject, body, 0.65, 0.85)
+    assert res["forwarded_checked"] is True
+    assert res["prediction"] == "Legitimate", f"legit forward flagged: {res}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
