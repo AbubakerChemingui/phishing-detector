@@ -191,7 +191,7 @@ Interpreter: `C:\Users\Abubaker\phishing-detector\phishing_env\Scripts\python.ex
 Dependencies: `requirements.txt` (pinned). From the repo root:
 
 ```powershell
-<venv-python> -m pytest test_system.py -v          # 23 passed
+<venv-python> -m pytest test_system.py -v          # 24 passed
 <venv-python> evaluate_saved_model.py               # results/baseline_metrics.json + cross_dataset_metrics.json
 <venv-python> test_adversarial.py                   # adversarial_results.txt
 <venv-python> evaluate_languages.py                 # results/multilingual_metrics.json

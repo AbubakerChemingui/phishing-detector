@@ -45,7 +45,7 @@ The `.pkl` model files are never modified by any evaluation below.
 | 3 | Adversarial suite (seed 12345, 40 samples, one decision rule `prob>=0.5`, hardening ON): **raw 40/40, hardened 40/40, Δ 0pp** | `<venv-python> test_adversarial.py` | `adversarial_results.txt`: per-class table, all 100% -> 100% |
 | 4 | Legit controls: **1 FP / 15 (6.7%)** — `Control#8` ("Happy Birthday!", short benign text, model bias; no URL involved) | same script, "Legitimate Control Evaluation" block | `False positives: 1 ... Control#8` |
 | 5 | French: **54.5% accuracy, 5/5 legit flagged**; Arabic: **54.5% accuracy, 11/11 destroyed by cleaning** (model is English-only) | `<venv-python> evaluate_languages.py` | `results/multilingual_metrics.json` |
-| 6 | Unit tests: **23/23 pass** | `<venv-python> -m pytest test_system.py -v` | `23 passed` |
+| 6 | Unit tests: **24/24 pass** | `<venv-python> -m pytest test_system.py -v` | `24 passed` |
 | 7 | Firewall dry-run: `legit.eml` Legitimate (85.00%), `phish.eml` Phishing (91.50%) — no credentials needed (confidences measured on the current code, where headers flow into `core.analyze_email`; identical figures with `--harden`) | `<venv-python> email_firewall.py --scan-folder test_samples` | per-file verdicts |
 | 8 | URL scoring (measured): hex-IP 0.30, decimal-IP 0.30, percent-IP 0.45, plain IP 0.30, `@` userinfo 0.05, shortener 0.15, clean URL 0.00 | `<venv-python> -c "import url_analysis as u; ..."` (see §4) | risk values as listed |
 
