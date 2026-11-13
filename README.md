@@ -50,6 +50,16 @@ TN 10,994 / FP 328 / FN 66 / TP 7,242, FPR 2.90 %.
 > **Security is not absolute.** These figures describe performance on two fixed corpora.
 > The system reduces risk; it does not eliminate it.
 
+### Confusion matrices and ROC
+
+| Holdout — 16,438 emails | Unseen corpus — 18,630 emails |
+|---|---|
+| ![Confusion matrix, holdout](assets/figures/confusion_holdout.png) | ![Confusion matrix, unseen corpus](assets/figures/confusion_cross.png) |
+
+![ROC curve, Random Forest holdout](assets/figures/roc_holdout.png)
+
+Figures are regenerated from `results/*.json` by `assets/make_figures.py` — no retraining.
+
 ---
 
 ## How it works
@@ -117,6 +127,12 @@ normalize the input; the classifier and its weights are unchanged.
 | URL shortener | 0.15 | |
 | Open redirect | 0.15 | |
 | Userinfo `@` trick | 0.05 | |
+
+![Measured URL risk by signal](assets/figures/url_risk.png)
+
+*Each bar is one probe URL: several signals can fire at once (e.g. percent-encoding plus
+obfuscation), so bars add the base weights above. A percent-encoded host that decodes to a
+dotted IP measured 0.75 in probing.*
 
 Decision rules layered on top of the model score:
 
